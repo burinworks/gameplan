@@ -4,6 +4,7 @@ import { serve } from '@hono/node-server';
 import { systemClock } from '../clock.js';
 import { openDb } from '../db/open.js';
 import { Store } from '../domain/store.js';
+import { mountMcp } from '../mcp/http.js';
 import { createApp } from './app.js';
 
 const port = Number(process.env.GAMEPLAN_PORT ?? 4747);
@@ -12,13 +13,15 @@ const dbPath = process.env.GAMEPLAN_DB ?? join(homedir(), 'Library', 'Applicatio
 const db = openDb(dbPath);
 const clock = systemClock;
 const store = new Store(db, clock);
-const app = createApp({ store, db, clock });
+let closeMcp = (): void => {};
+const app = createApp({ store, db, clock, extend: (a) => (closeMcp = mountMcp(a, { store, db, clock })) });
 
 const server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port }, (info) => {
   console.log(`gameplan listening on http://127.0.0.1:${info.port} (mcp: /mcp) · db ${dbPath}`);
 });
 
 const shutdown = () => {
+  closeMcp();
   server.close();
   db.close();
   process.exit(0);
