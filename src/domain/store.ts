@@ -202,6 +202,7 @@ export class Store {
   private depth = 0;
   private batch: string | null = null;
   private pending: EventRow[] = [];
+  private silent = 0;
   private stmts = new Map<string, StatementSync>();
 
   constructor(
@@ -280,12 +281,27 @@ export class Store {
     return st;
   }
 
+  /** Runs low-level writes without recording their natural events (revert records its own). */
+  quietly<T>(fn: () => T): T {
+    this.silent++;
+    try {
+      return fn();
+    } finally {
+      this.silent--;
+    }
+  }
+
   record(
     c: WCtx,
     e: { entity: EntityType; entityId: string; projectId: string | null; label: string | null; kind: EventKind; before?: unknown; after?: unknown; reason?: string | null },
   ): EventRow {
     const id = newId('ev');
     const reason = e.reason === undefined ? (c.reason ?? null) : e.reason;
+    if (this.silent > 0)
+      return {
+        id, projectId: e.projectId, entity: e.entity, entityId: e.entityId, label: e.label, actor: c.actor, kind: e.kind,
+        before: (e.before ?? null) as EventRow['before'], after: (e.after ?? null) as EventRow['after'], reason, batchId: c.batchId, at: this.clock.now(),
+      };
     this.q(
       'INSERT INTO events(id, project_id, entity, entity_id, label, actor, kind, before_json, after_json, reason, batch_id, at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
     ).run(

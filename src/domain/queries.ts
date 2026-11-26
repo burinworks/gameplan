@@ -337,7 +337,8 @@ export function home(db: DatabaseSync, today: string, settings: Settings) {
         db
           .prepare(
             `SELECT e.*, p.slug, p.name AS p_name, p.color FROM events e JOIN projects p ON p.id = e.project_id
-             WHERE e.kind = 'dates_changed' AND e.entity = 'task' AND substr(e.at, 1, 10) >= ? AND e.project_id IN (${ids.map(() => '?').join(',')})
+             WHERE e.kind = 'dates_changed' AND e.entity = 'task' AND substr(e.at, 1, 10) >= ?
+               AND NOT EXISTS (SELECT 1 FROM events r WHERE r.kind = 'reverted' AND json_extract(r.after_json, '$.revertOf') = e.id) AND e.project_id IN (${ids.map(() => '?').join(',')})
              ORDER BY e.at DESC, e.rowid DESC`,
           )
           .all(since, ...ids) as Row[]
