@@ -307,6 +307,12 @@ export class Store {
     return row;
   }
 
+  /** Merges extra fields into an event's `after` (same transaction, before listeners fire). */
+  amendEventAfter(ev: EventRow, extra: Record<string, unknown>): void {
+    ev.after = { ...(ev.after ?? {}), ...extra };
+    this.q('UPDATE events SET after_json = ? WHERE id = ?').run(JSON.stringify(ev.after), ev.id);
+  }
+
   // ---------- getters (throw not_found) ----------
 
   project(slug: string, opts: { archived?: boolean } = {}): Project {
