@@ -1,0 +1,34 @@
+{
+  "name": "gameplan",
+  "version": "0.1.0",
+  "description": "Local game plan engine: projects, milestones, tasks, to-dos, with an MCP server for AI agents",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server/main.ts",
+    "start": "node dist/src/server/main.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "license": "UNLICENSED",
+  "type": "module",
+  "dependencies": {
+    "@hono/mcp": "^0.3.5",
+    "@hono/node-server": "^2.1.11",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "hono": "^4.13.22",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.4",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^5.1.2"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "private": true
+}
