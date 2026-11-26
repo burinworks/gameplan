@@ -425,3 +425,34 @@ export function updates(
     };
   });
 }
+
+function slugOfTask(db: DatabaseSync, taskId: string): string {
+  const r = db
+    .prepare('SELECT p.slug FROM tasks t JOIN milestones m ON m.id = t.milestone_id JOIN projects p ON p.id = m.project_id WHERE t.id = ? AND t.archived_at IS NULL AND m.archived_at IS NULL AND p.archived_at IS NULL')
+    .get(taskId) as { slug: string } | undefined;
+  if (!r) throw new GameplanError('not_found', `task ${taskId} not found`);
+  return r.slug;
+}
+
+/** One task with everything the task pane shows, plus its last 10 events. */
+export function taskDetail(db: DatabaseSync, taskId: string, today: string) {
+  const tree = projectTree(db, slugOfTask(db, taskId), today);
+  for (const m of tree.milestones) {
+    const t = m.tasks.find((x) => x.id === taskId);
+    if (t) {
+      const recent = (db.prepare("SELECT * FROM events WHERE entity_id = ? OR (entity = 'todo' AND entity_id IN (SELECT id FROM todos WHERE task_id = ?)) ORDER BY rowid DESC LIMIT 10").all(taskId, taskId) as Row[]).map(toEvent);
+      return { ...t, project: { slug: tree.project.slug, name: tree.project.name, color: tree.project.color }, milestone: { id: m.id, name: m.name, due: m.due }, events: recent };
+    }
+  }
+  throw new GameplanError('not_found', `task ${taskId} not found`);
+}
+
+export function milestoneDetail(db: DatabaseSync, milestoneId: string, today: string) {
+  const r = db
+    .prepare('SELECT p.slug FROM milestones m JOIN projects p ON p.id = m.project_id WHERE m.id = ? AND m.archived_at IS NULL AND p.archived_at IS NULL')
+    .get(milestoneId) as { slug: string } | undefined;
+  if (!r) throw new GameplanError('not_found', `milestone ${milestoneId} not found`);
+  const tree = projectTree(db, r.slug, today);
+  const m = tree.milestones.find((x) => x.id === milestoneId)!;
+  return { ...m, project: { slug: tree.project.slug, name: tree.project.name, color: tree.project.color } };
+}
