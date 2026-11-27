@@ -6,9 +6,7 @@
 
 **Architecture:** One Node process. `node:sqlite` (synchronous) with versioned migrations; a `Store` owns every write (validation → transaction → event rows → change notification); pure functions in `derive.ts`; read models in `queries.ts`; Hono serves `/api/*`, `/events` (SSE) and `/mcp` (Streamable HTTP) on `127.0.0.1:4747`.
 
-**Tech Stack:** Node ≥ 24, TypeScript (strict, ESM), `node:sqlite`, Hono + `@hono/node-server`, `@modelcontextprotocol/sdk` ^1.32, `@hono/mcp`, zod ^4, vitest, tsx (same toolchain as `~/Documents/repos/mcp-pipe`).
-
-**Spec:** `~/Documents/repos/second-brain/projects/gameplan/notes/gameplan--design.md` · Mockup: https://claude.ai/artifact/H9CQZ5JJHBetPYAGf9ihTk (every screen's data comes from an endpoint in this plan — see "Screen → engine" below).
+**Tech Stack:** Node ≥ 24, TypeScript (strict, ESM), `node:sqlite`, Hono + `@hono/node-server`, `@modelcontextprotocol/sdk` ^1.32, `@hono/mcp`, zod ^4, vitest, tsx.
 
 ## Global Constraints
 - Dates are `YYYY-MM-DD` strings, calendar days, `end` inclusive. Event timestamps are ISO datetimes (UTC).
@@ -257,6 +255,6 @@ One transaction, one batch; on top of the per-entity events it writes one `plann
 ---
 
 ## Next plans
-- **Plan 2 — UI** (React + Vite, served by this server): every mockup screen, wired to the endpoints in "Screen → engine"; live via `/events`; Undo = revert of the last own event.
+- **Plan 2 — UI** (React + Vite, served by this server): every screen, wired to the endpoints in "Screen → engine"; live via `/events`; Undo = revert of the last own event.
 - **Plan 3 — Tauri shell:** tray app, autostart, Node single-executable sidecar; reads `open_at_login` / `menu_bar_icon`; opens repo/vault paths; replaces launchd.
 - **After Plan 3 — Gameplan skill:** grows from `docs/agent-instructions.md`.
