@@ -1,6 +1,8 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { Menu } from '../src/ui/Menu';
 import { Button } from '../src/ui/Button';
 import { Checkbox } from '../src/ui/Checkbox';
 import { Row } from '../src/ui/Row';
@@ -95,5 +97,28 @@ describe('primitives', () => {
     expect(onExpire).not.toHaveBeenCalled();
     act(() => vi.advanceTimersByTime(1));
     expect(onExpire).toHaveBeenCalledTimes(1);
+  });
+
+  it('Menu align start anchors the menu to the trigger left edge', async () => {
+    render(<Menu label="Title" trigger={<span>T</span>} items={[{ label: 'One', onSelect: () => {} }]} align="start" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Title' }));
+    const menu = screen.getByRole('menu');
+    expect(menu.style.left).toBe('0px');
+    expect(menu.style.right).toBe('');
+  });
+
+  it('Menu defaults to end alignment', async () => {
+    render(<Menu label="Title" trigger={<span>T</span>} items={[{ label: 'One', onSelect: () => {} }]} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Title' }));
+    expect(screen.getByRole('menu').style.right).not.toBe('');
+  });
+
+  it('primitives.css: no raw ring px, and sheet/menu go opaque under reduced transparency', () => {
+    const css = readFileSync(new URL('../src/ui/primitives.css', import.meta.url), 'utf8');
+    expect(css).not.toMatch(/\b1\.5px|\b2px/);
+    const block = css.slice(css.indexOf('prefers-reduced-transparency'));
+    expect(block).toMatch(/\.gp-sheet/);
+    expect(block).toMatch(/\.gp-menu/);
+    expect(block).toMatch(/backdrop-filter: none/);
   });
 });

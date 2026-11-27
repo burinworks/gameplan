@@ -15,10 +15,12 @@ export interface MenuProps {
   /** aria-label of the trigger button. */
   label: string;
   items: MenuItem[];
+  /** `end` (default): menu's right edge meets the trigger's right edge. `start`: left edges meet. */
+  align?: 'start' | 'end';
 }
 
-export function Menu({ trigger, label, items }: MenuProps) {
-  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+export function Menu({ trigger, label, items, align = 'end' }: MenuProps) {
+  const [pos, setPos] = useState<{ top: number; left?: number; right?: number } | null>(null);
   const btn = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const open = pos !== null;
@@ -42,7 +44,7 @@ export function Menu({ trigger, label, items }: MenuProps) {
   const toggle = () => {
     if (open) return close();
     const r = btn.current!.getBoundingClientRect();
-    setPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+    setPos(align === 'start' ? { top: r.bottom + 4, left: r.left } : { top: r.bottom + 4, right: window.innerWidth - r.right });
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
@@ -66,7 +68,7 @@ export function Menu({ trigger, label, items }: MenuProps) {
       </button>
       {open &&
         createPortal(
-          <div ref={list} className="gp-menu" role="menu" aria-label={label} style={{ top: pos.top, right: pos.right }} onKeyDown={onKeyDown}>
+          <div ref={list} className="gp-menu" role="menu" aria-label={label} style={{ top: pos.top, left: pos.left, right: pos.right }} data-align={align} onKeyDown={onKeyDown}>
             {items.map((it) =>
               it.href ? (
                 <a key={it.label} role="menuitem" className="gp-menu__item" href={it.href} target="_blank" rel="noopener noreferrer" tabIndex={-1} onClick={() => close(false)}>

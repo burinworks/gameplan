@@ -81,7 +81,7 @@
   background: var(--gp-sel);
 }
 .gp-btn:active:not(:disabled) {
-  background: color-mix(in srgb, var(--gp-sel) 150%, transparent);
+  background-image: linear-gradient(var(--gp-sel), var(--gp-sel));
 }
 .gp-btn--primary:active:not(:disabled) {
   background: var(--gp-accentHover);
@@ -166,7 +166,7 @@
 }
 .gp-field__input:focus {
   outline: none;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gp-accent) 35%, transparent);
+  box-shadow: 0 0 0 var(--gp-s2) color-mix(in srgb, var(--gp-accent) 35%, transparent);
 }
 
 /* ---------- chip, swatch, count ---------- */
@@ -230,7 +230,7 @@
   border: 0;
   border-radius: var(--gp-r5);
   background: transparent;
-  box-shadow: inset 0 0 0 1.5px var(--gp-text3);
+  box-shadow: inset 0 0 0 var(--gp-s2) var(--gp-text3);
   color: var(--gp-ok);
   cursor: pointer;
 }
@@ -238,10 +238,10 @@
   color: var(--gp-review);
 }
 .gp-check.is-checked {
-  box-shadow: inset 0 0 0 1.5px currentColor;
+  box-shadow: inset 0 0 0 var(--gp-s2) currentColor;
 }
 .gp-check.is-locked {
-  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--gp-text3) 50%, transparent);
+  box-shadow: inset 0 0 0 var(--gp-s2) color-mix(in srgb, var(--gp-text3) 50%, transparent);
   cursor: default;
 }
 
@@ -276,7 +276,7 @@
   background: var(--gp-sel);
 }
 .gp-rowitem.is-clickable:active {
-  background: color-mix(in srgb, var(--gp-sel) 150%, transparent);
+  background-image: linear-gradient(var(--gp-sel), var(--gp-sel));
 }
 .gp-rowitem__text {
   flex: 1;
@@ -434,5 +434,14 @@
 @media (prefers-reduced-motion: reduce) {
   .gp-sheet {
     animation: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .gp-sheet,
+  .gp-menu {
+    background: var(--gp-panelSolid);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }

@@ -21,7 +21,7 @@ export function TitleMenu({ slug }: { slug: string }) {
   const name = project?.name ?? slug;
   return (
     <h1 className="pj-title" dir="auto">
-      <Menu label={name} trigger={<span className="pj-title__text">{name}</span>} items={items} />
+      <Menu align="start" label={name} trigger={<span className="pj-title__text">{name}</span>} items={items} />
       {confirming && project && (
         <Sheet
           title={`Archive ${project.name}?`}
