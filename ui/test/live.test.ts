@@ -1,16 +1,19 @@
 import { QueryClient } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { startLive, undoLast, undoStack, useEngineUp, useHighlight } from '../src/api/live';
+import { startLive, undoLast, undoStack, useHighlight } from '../src/api/live';
 import type { EventRow } from '../src/api/types';
 import { mockFetch } from './setup';
 
 class FakeES {
   static last: FakeES;
+  static count = 0;
+  readyState = 1;
   listeners: Record<string, ((e: { data?: string }) => void)[]> = {};
   closed = false;
   constructor(public url: string) {
     FakeES.last = this;
+    FakeES.count++;
   }
   addEventListener(t: string, cb: (e: { data?: string }) => void) {
     (this.listeners[t] ??= []).push(cb);
@@ -110,14 +113,36 @@ describe('live sync', () => {
     expect(undoStack.size()).toBe(0);
   });
 
-  it('tracks engine up/down and invalidates all when ready follows an error', () => {
-    const { result } = renderHook(() => useEngineUp());
-    expect(result.current).toBe(true);
-    act(() => FakeES.last.emit('error'));
-    expect(result.current).toBe(false);
+  it('recreates a CLOSED EventSource with backoff', () => {
+    const first = FakeES.last;
+    const before = FakeES.count;
+    first.readyState = 2;
+    first.emit('error');
+    expect(first.closed).toBe(true);
+    expect(FakeES.count).toBe(before);
+    vi.advanceTimersByTime(1000);
+    expect(FakeES.count).toBe(before + 1);
+    expect(FakeES.last).not.toBe(first);
+    FakeES.last.readyState = 2;
+    FakeES.last.emit('error');
+    vi.advanceTimersByTime(1999);
+    expect(FakeES.count).toBe(before + 1);
+    vi.advanceTimersByTime(1);
+    expect(FakeES.count).toBe(before + 2);
+  });
+
+  it('does not reconnect by hand while the browser is still retrying', () => {
+    const before = FakeES.count;
+    FakeES.last.readyState = 0;
+    FakeES.last.emit('error');
+    vi.advanceTimersByTime(10_000);
+    expect(FakeES.count).toBe(before);
+  });
+
+  it('ready after an error invalidates all', () => {
+    FakeES.last.emit('error');
     spy.mockClear();
-    act(() => FakeES.last.emit('ready', { today: '2026-11-27' }));
-    expect(result.current).toBe(true);
+    FakeES.last.emit('ready', { today: '2026-11-27' });
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
