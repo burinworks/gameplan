@@ -114,7 +114,7 @@ describe('primitives', () => {
   });
 
   it('primitives.css: no raw ring px, and sheet/menu go opaque under reduced transparency', () => {
-    const css = readFileSync(new URL('../src/ui/primitives.css', import.meta.url), 'utf8');
+    const css = readFileSync('ui/src/ui/primitives.css', 'utf8');
     expect(css).not.toMatch(/\b1\.5px|\b2px/);
     const block = css.slice(css.indexOf('prefers-reduced-transparency'));
     expect(block).toMatch(/\.gp-sheet/);
