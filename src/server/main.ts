@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +9,7 @@ import { openDb } from '../db/open.js';
 import { Store } from '../domain/store.js';
 import { mountMcp } from '../mcp/http.js';
 import { createApp } from './app.js';
+import { resolveUiDir } from './ui-dir.js';
 
 const port = Number(process.env.GAMEPLAN_PORT ?? 4747);
 const dbPath = process.env.GAMEPLAN_DB ?? join(homedir(), 'Library', 'Application Support', 'Gameplan', 'gameplan.db');
@@ -25,9 +26,8 @@ const version = (() => {
   }
 })();
 
-// Built UI: dist/ui next to the compiled engine (dist/src/server), or the repo's dist/ui when run from source.
 const here = dirname(fileURLToPath(import.meta.url));
-const uiDir = [process.env.GAMEPLAN_UI, join(here, '..', '..', 'ui'), join(here, '..', '..', 'dist', 'ui')].find((d) => d && existsSync(join(d, 'index.html')));
+const uiDir = resolveUiDir(here, process.env.GAMEPLAN_UI);
 
 const db = openDb(dbPath);
 const clock = systemClock;
