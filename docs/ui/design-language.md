@@ -16,7 +16,7 @@ Four stacked surfaces, back to front. Each layer is either translucent or near-o
 
 | Layer | Token | Role |
 |---|---|---|
-| Wall | `wall` + two blurred colour blobs | The desktop behind the window (mockup only; in Tauri it's the real desktop through vibrancy) |
+| Wall | `wall` + two blurred colour blobs | The desktop behind the window (web shell only; in Tauri it's the real desktop through vibrancy) |
 | Window | `win`, blur 40 + saturate 1.6 | Frosted glass; holds the sidebar directly |
 | Card | `card` (92% opaque) | The content sheet, inset 8px from the window, radius 12 |
 | Panel | `panel` (2.5–3.5% tint) | Groupings inside the card; tint, never border |
@@ -53,7 +53,7 @@ Motion explains change; it never performs.
 - Respect `prefers-reduced-motion`: replace slides with instant changes, keep the highlight fade.
 
 ## Light and dark
-Both are first-class and designed together (every mockup artboard has a `dark` prop). Dark is not inverted light: tints go up (panel 3.5% vs 2.5%), project fills go up (22/34% vs 16/26%), state colours shift lighter (`risk` #FF7A70 vs #C8322B). Default follows the system.
+Both are first-class and designed together (every screen is drawn in both). Dark is not inverted light: tints go up (panel 3.5% vs 2.5%), project fills go up (22/34% vs 16/26%), state colours shift lighter (`risk` #FF7A70 vs #C8322B). Default follows the system.
 
 ## What it is not
 - Not playful: no emoji in UI chrome, no confetti, no mascots.

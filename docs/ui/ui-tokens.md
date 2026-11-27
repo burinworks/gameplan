@@ -35,7 +35,7 @@ No other sizes.
 | `aside` | `rgba(0,0,0,.018)` | `rgba(255,255,255,.025)` |
 | `sheet` | `rgba(255,255,255,.96)` | `rgba(36,36,40,.94)` |
 | `menu` | `rgba(248,248,250,.80)` | `rgba(40,40,44,.78)` |
-| `bar` (menu bar strip, mockup) | `rgba(246,246,248,.60)` | `rgba(30,30,34,.60)` |
+| `bar` (menu bar strip) | `rgba(246,246,248,.60)` | `rgba(30,30,34,.60)` |
 | `scrim` | `rgba(20,20,30,.18)` | `rgba(0,0,0,.35)` |
 | `pill` | `#ffffff` | `#3a3a3f` |
 
@@ -72,7 +72,7 @@ Assigned in order on project creation, user-changeable. Bar tint = colour at 16%
 
 `#6E7CF5` indigo · `#D9892B` amber · `#3FA796` teal · `#B66AD0` orchid · `#7A8B99` slate · `#E0695A` coral · `#5A9BD5` sky · `#9AA04A` olive
 
-(First five are from the mockup; last three extend it, to be checked against `risk`/`review` for confusion in Plan 2.)
+(First five are from the design; last three extend it, to be checked against `risk`/`review` for confusion in Plan 2.)
 
 ## Spacing
 2px base. Allowed: `2 4 6 8 10 12 14 16 18 20 22 24 28 32`. Common: row gap 10 · panel gap 12–14 · card padding 32 · pane padding 20.
@@ -114,7 +114,7 @@ Icons: 24-grid line icons, stroke 1.8 (2 at ≤14px), round caps and joins, `cur
 | `diamondHalo` | `0 0 0 2px var(--gp-panelSolid)` |
 
 ## Blur
-`win` `blur(40px) saturate(1.6)` · `sheet`/`menu`/`bar` `blur(30px)` · mockup wall blobs 90–100px. In Tauri use native vibrancy for the window and CSS backdrop-filter only for sheets/menus. With `prefers-reduced-transparency`: no blur, `win` → `panelSolid`, `card` → opaque.
+`win` `blur(40px) saturate(1.6)` · `sheet`/`menu`/`bar` `blur(30px)` · web-shell wall blobs 90–100px. In Tauri use native vibrancy for the window and CSS backdrop-filter only for sheets/menus. With `prefers-reduced-transparency`: no blur, `win` → `panelSolid`, `card` → opaque.
 
 ## Motion
 | Token | Value | Use |
