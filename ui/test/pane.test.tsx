@@ -101,9 +101,30 @@ describe('TaskPane', () => {
     );
   });
 
+  it('plain click on End + shifts both dates', async () => {
+    const { fetchMock } = mount(<TaskPane taskId="t1" slug="acme" />, taskRoutes());
+    fireEvent.click(await screen.findByRole('button', { name: 'End +1 day' }));
+    await waitFor(() =>
+      expect(bodies(fetchMock, 'POST', '/api/tasks/t1/reschedule')).toEqual([{ start: '2026-11-21', end: '2026-11-26', cascade: false }]),
+    );
+  });
+
+  it('a refused title save restores the server value', async () => {
+    mount(<TaskPane taskId="t1" slug="acme" />, {
+      ...taskRoutes(),
+      'PATCH /api/tasks/t1': () => new Response(JSON.stringify({ error: { code: 'forbidden', message: 'no' } }), { status: 403 }),
+    });
+    const title = (await screen.findByLabelText('Title')) as HTMLTextAreaElement;
+    fireEvent.focus(title);
+    fireEvent.change(title, { target: { value: 'Rejected' } });
+    fireEvent.keyDown(title, { key: 'Enter' });
+    fireEvent.blur(title);
+    await waitFor(() => expect(title.value).toBe('Draft the spec'));
+  });
+
   it('shift-click shifts only End', async () => {
     const { fetchMock } = mount(<TaskPane taskId="t1" slug="acme" />, taskRoutes());
-    fireEvent.click(await screen.findByRole('button', { name: 'Start +1 day' }), { shiftKey: true });
+    fireEvent.click(await screen.findByRole('button', { name: 'End +1 day' }), { shiftKey: true });
     await waitFor(() =>
       expect(bodies(fetchMock, 'POST', '/api/tasks/t1/reschedule')).toEqual([{ start: '2026-11-20', end: '2026-11-26', cascade: false }]),
     );
