@@ -14,6 +14,7 @@ import {
   TASK_STATUS,
   toArea,
   toAttachment,
+  toDayPlanItem,
   toDependency,
   toEvent,
   toMilestone,
@@ -25,6 +26,7 @@ import {
   type AttachmentKind,
   type AttachmentRole,
   type Ctx,
+  type DayPlanItem,
   type Dependency,
   type EntityType,
   type EventKind,
@@ -814,6 +816,44 @@ export class Store {
       before: { note: t.resumeNote, at: t.resumeAt, by: t.resumeBy },
       after: { note, at, by },
     });
+  }
+
+  // ---------- day plan ----------
+
+  dayPlan(date: string): DayPlanItem[] {
+    return (this.q('SELECT * FROM day_plan_items WHERE date = ? ORDER BY ord').all(date) as Record<string, unknown>[]).map(toDayPlanItem);
+  }
+
+  /** Replaces the date's plan: ≤ 3 open tasks in order, each with an optional `when` (≤ 40 chars). */
+  planDay(ctx: Ctx, date: string, items: { taskId: string; when?: string | null }[]): DayPlanItem[] {
+    if (!isDate(date)) throw new GameplanError('invalid', `date must be a valid YYYY-MM-DD date (got ${JSON.stringify(date)})`);
+    if (!Array.isArray(items)) throw new GameplanError('invalid', 'items must be an array');
+    if (items.length > 3) throw new GameplanError('invalid', `a day plan holds at most 3 tasks (got ${items.length}) — pick the 3 that matter most`);
+    const seen = new Set<string>();
+    const list = items.map((it) => {
+      if (seen.has(it.taskId)) throw new GameplanError('invalid', `task ${it.taskId} is in the plan twice`);
+      seen.add(it.taskId);
+      const when = typeof it.when === 'string' && it.when.trim() ? it.when.trim() : null;
+      if (when !== null && when.length > 40) throw new GameplanError('invalid', `"when" is at most 40 characters (got ${when.length})`);
+      return { taskId: it.taskId, when };
+    });
+    return this.write(ctx, (c) => {
+      for (const it of list) {
+        const t = this.task(it.taskId);
+        if (t.status !== 'todo' && t.status !== 'doing') throw new GameplanError('invalid', `task "${t.title}" is ${t.status} — only open tasks (todo, doing) can be planned`);
+      }
+      const before = this.dayPlan(date).map((x) => ({ taskId: x.taskId, when: x.when }));
+      if (same(before, list)) return this.dayPlan(date);
+      this.applyDayPlan(date, list);
+      this.record(c, { entity: 'day_plan', entityId: date, projectId: null, label: `Plan for ${date}`, kind: 'day_planned', before: { items: before }, after: { items: list } });
+      return this.dayPlan(date);
+    });
+  }
+
+  /** Low-level: replace a date's items (no checks, no event). */
+  applyDayPlan(date: string, items: { taskId: string; when: string | null }[]): void {
+    this.q('DELETE FROM day_plan_items WHERE date = ?').run(date);
+    items.forEach((it, i) => this.q('INSERT INTO day_plan_items(date, task_id, ord, when_text) VALUES (?,?,?,?)').run(date, it.taskId, i, it.when));
   }
 
   // ---------- to-dos ----------

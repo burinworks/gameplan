@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { addDays } from '../clock.js';
+import { addDays, weekday } from '../clock.js';
 import { linkIsBad, milestoneHealth, milestoneSpan, rollup, taskHealth, taskProgress, todoStates, type Health, type Progress, type TodoState, type DepInfo } from './derive.js';
 import type { Settings } from './settings.js';
 import {
@@ -11,7 +11,9 @@ import {
   toTask,
   toTodo,
   toArea,
+  toDayPlanItem,
   type Attachment,
+  type DayPlanItem,
   type EventRow,
   type Milestone,
   type Project,
@@ -324,22 +326,117 @@ function homeProjects(db: DatabaseSync, settings: Settings): Row[] {
   return db.prepare(`SELECT * FROM projects WHERE archived_at IS NULL AND status IN (${statuses.map(() => '?').join(',')}) ORDER BY ord, rowid`).all(...statuses) as Row[];
 }
 
+export interface TodayTask {
+  id: string;
+  title: string;
+  project: string;
+  projectName: string;
+  color: string | null;
+  start: string | null;
+  end: string | null;
+  progress: Progress;
+  executor: string;
+  status: string;
+}
+
+export function getDayPlan(db: DatabaseSync, date: string): DayPlanItem[] {
+  return (db.prepare('SELECT * FROM day_plan_items WHERE date = ? ORDER BY ord').all(date) as Row[]).map(toDayPlanItem);
+}
+
+/** First day of the week containing `today`. */
+function weekStartOf(today: string, start: 'mon' | 'sun' | string): string {
+  const wd = weekday(today); // Mon = 0 … Sun = 6
+  return addDays(today, start === 'sun' ? -((wd + 1) % 7) : -wd);
+}
+
 export function home(db: DatabaseSync, today: string, settings: Settings) {
-  const todayTasks: { id: string; title: string; project: string; projectName: string; color: string | null; start: string; end: string; progress: Progress; executor: string; status: string }[] = [];
+  const todayTasks: (TodayTask & { start: string; end: string })[] = [];
   const atRisk: { id: string; title: string; project: string; projectName: string; color: string | null; health: Health; reasons: string[] }[] = [];
   const projects = homeProjects(db, settings);
-  for (const r of projects) {
+  const trees = new Map<string, ProjectTree>();
+  const index = new Map<string, { t: TreeTask; p: ProjectTree['project'] }>();
+  const addTree = (r: Row): void => {
     const tree = buildTree(db, r, today);
+    trees.set(tree.project.id, tree);
+    for (const m of tree.milestones) for (const t of m.tasks) index.set(t.id, { t, p: tree.project });
+  };
+  for (const r of projects) addTree(r);
+  const shown = new Set(trees.keys());
+  const asToday = (t: TreeTask, p: ProjectTree['project']): TodayTask => ({
+    id: t.id, title: t.title, project: p.slug, projectName: p.name, color: p.color, start: t.start, end: t.end, progress: t.progress, executor: t.executor, status: t.status,
+  });
+  for (const tree of trees.values()) {
     const p = tree.project;
     for (const m of tree.milestones)
       for (const t of m.tasks) {
-        if (isOpen(t.status) && t.start && t.end && t.start <= today && today <= t.end)
-          todayTasks.push({ id: t.id, title: t.title, project: p.slug, projectName: p.name, color: p.color, start: t.start, end: t.end, progress: t.progress, executor: t.executor, status: t.status });
+        if (isOpen(t.status) && t.start && t.end && t.start <= today && today <= t.end) todayTasks.push({ ...asToday(t, p), start: t.start, end: t.end });
         if (t.health === 'late' || t.health === 'conflict')
           atRisk.push({ id: t.id, title: t.title, project: p.slug, projectName: p.name, color: p.color, health: t.health, reasons: t.reasons });
       }
   }
   todayTasks.sort((a, b) => a.end.localeCompare(b.end) || a.title.localeCompare(b.title));
+
+  // My plan: today's items whose task is still open and unarchived (any unarchived project).
+  const plan: { n: number; task: TodayTask; when: string | null; resume: Resume | null }[] = [];
+  for (const it of getDayPlan(db, today)) {
+    if (!index.has(it.taskId)) {
+      const pr = db
+        .prepare('SELECT p.* FROM tasks t JOIN milestones m ON m.id = t.milestone_id JOIN projects p ON p.id = m.project_id WHERE t.id = ? AND p.archived_at IS NULL')
+        .get(it.taskId) as Row | undefined;
+      if (pr && !trees.has(String(pr.id))) addTree(pr);
+    }
+    const hit = index.get(it.taskId);
+    if (!hit || !isOpen(hit.t.status)) continue;
+    plan.push({ n: plan.length + 1, task: asToday(hit.t, hit.p), when: it.when, resume: hit.t.resume });
+  }
+  const planned = new Set(plan.map((x) => x.task.id));
+
+  const pickUp = [...index.values()]
+    .filter(({ t, p }) => shown.has(p.id) && isOpen(t.status) && t.resume && !planned.has(t.id))
+    .sort((a, b) => (b.t.resume!.at ?? '').localeCompare(a.t.resume!.at ?? ''))
+    .slice(0, 5)
+    .map(({ t, p }) => ({ task: asToday(t, p), resume: t.resume! }));
+  const picked = new Set(pickUp.map((x) => x.task.id));
+  const alsoToday = todayTasks.filter((t) => !planned.has(t.id) && !picked.has(t.id));
+
+  const reviewEv = db.prepare(
+    `SELECT actor, at FROM events WHERE entity = 'task' AND entity_id = ? AND json_extract(after_json, '$.status') = 'review' ORDER BY rowid DESC LIMIT 1`,
+  );
+  const needsReview = [...index.values()]
+    .filter(({ t, p }) => shown.has(p.id) && t.status === 'review')
+    .map(({ t, p }) => {
+      const e = reviewEv.get(t.id) as { actor: string; at: string } | undefined;
+      return {
+        task: { id: t.id, title: t.title },
+        project: p.slug,
+        color: p.color,
+        by: e?.actor ?? null,
+        at: e?.at ?? t.updatedAt,
+        todos: { done: t.todos.filter((x) => x.done).length, total: t.todos.length },
+      };
+    })
+    .sort((a, b) => a.at.localeCompare(b.at));
+
+  const weekStart = weekStartOf(today, settings.week_start);
+  const dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: settings.time_zone, year: 'numeric', month: '2-digit', day: '2-digit' });
+  const doneRows = db
+    .prepare(
+      `SELECT e.*, p.slug FROM events e JOIN projects p ON p.id = e.project_id
+       WHERE e.entity = 'task' AND p.archived_at IS NULL AND e.at >= ?
+         AND (e.kind = 'review_accepted' OR (e.kind = 'status_changed' AND json_extract(e.after_json, '$.status') = 'done'))
+         AND NOT EXISTS (SELECT 1 FROM events r WHERE r.kind = 'reverted' AND json_extract(r.after_json, '$.revertOf') = e.id)
+       ORDER BY e.at DESC, e.rowid DESC`,
+    )
+    .all(`${addDays(weekStart, -2)}T00:00:00.000Z`) as Row[];
+  const seenDone = new Set<string>();
+  const doneItems: { id: string; title: string; project: string; at: string }[] = [];
+  for (const r of doneRows) {
+    const e = toEvent(r);
+    if (dayFmt.format(new Date(e.at)) < weekStart || seenDone.has(e.entityId)) continue;
+    seenDone.add(e.entityId);
+    doneItems.push({ id: e.entityId, title: e.label ?? '', project: String(r.slug), at: e.at });
+  }
+  const doneThisWeek = { count: doneItems.length, items: doneItems.slice(0, 10) };
 
   const since = addDays(today, -settings.rescheduled_days);
   const ids = projects.map((r) => String(r.id));
@@ -370,7 +467,7 @@ export function home(db: DatabaseSync, today: string, settings: Settings) {
         };
       })
     : [];
-  return { today, todayTasks, atRisk, rescheduled };
+  return { today, todayTasks, atRisk, rescheduled, plan, pickUp, alsoToday, needsReview, doneThisWeek };
 }
 
 export function timeline(db: DatabaseSync, today: string, from: string, to: string) {

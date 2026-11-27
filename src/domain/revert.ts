@@ -78,6 +78,12 @@ function undo(store: Store, c: WCtx, ev: EventRow): void {
       store.applyResumeNote(c, ev.entityId, (before.note as string | null) ?? null, { at: (before.at as string | null) ?? null, by: (before.by as string | null) ?? null });
       return;
     }
+    case 'day_planned': {
+      const cur = store.dayPlan(ev.entityId).map((x) => ({ taskId: x.taskId, when: x.when }));
+      if (!same(cur, after.items)) stale(ev, '(plan)');
+      store.applyDayPlan(ev.entityId, before.items as { taskId: string; when: string | null }[]);
+      return;
+    }
     case 'todo_done':
     case 'todo_undone':
       expectAfter(store, ev, ['done']);
