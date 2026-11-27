@@ -124,3 +124,10 @@
     transition: none;
   }
 }
+@media (prefers-reduced-transparency: reduce) {
+  .gp-inbox__menu {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--gp-panelSolid);
+  }
+}
