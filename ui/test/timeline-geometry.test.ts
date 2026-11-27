@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   arrowPath,
+  assignLanes,
+  barExtent,
   barGeom,
   dayIndex,
   dragDates,
@@ -78,5 +80,17 @@ describe('timeline geometry', () => {
   it('labelFits estimates label width', () => {
     expect(labelFits('OOP 01', 120)).toBe(true);
     expect(labelFits('A very long milestone name here', 40)).toBe(false);
+  });
+
+  it('assignLanes puts each span on the first lane it fits, new lane when overlapping', () => {
+    expect(assignLanes([])).toEqual({ lanes: [], count: 1 });
+    expect(assignLanes([{ x: 0, end: 50 }, { x: 100, end: 150 }])).toEqual({ lanes: [0, 0], count: 1 });
+    expect(assignLanes([{ x: 40, end: 90 }, { x: 0, end: 50 }, { x: 60, end: 100 }])).toEqual({ lanes: [1, 0, 0], count: 2 });
+    expect(assignLanes([{ x: 0, end: 50 }, { x: 10, end: 60 }, { x: 20, end: 70 }]).count).toBe(3);
+  });
+
+  it('barExtent counts an outside label as occupied width', () => {
+    expect(barExtent(0, 200, 'Hi')).toBe(200);
+    expect(barExtent(0, 10, 'Outline')).toBeGreaterThan(10 + 18);
   });
 });

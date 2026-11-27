@@ -192,7 +192,7 @@
   --tint: var(--gp-bar-tint);
   --prog: var(--gp-bar-progress);
   position: absolute;
-  top: calc((var(--gp-rowPitch) - var(--gp-control)) / 2);
+  top: calc(var(--lane, 0) * var(--gp-rowPitch) + (var(--gp-rowPitch) - var(--gp-control)) / 2);
   height: var(--gp-control);
   box-sizing: border-box;
   border-radius: var(--gp-r7);
@@ -274,7 +274,7 @@
 
 .tl-label-out {
   position: absolute;
-  top: calc((var(--gp-rowPitch) - var(--gp-lh-meta)) / 2);
+  top: calc(var(--lane, 0) * var(--gp-rowPitch) + (var(--gp-rowPitch) - var(--gp-lh-meta)) / 2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -314,7 +314,7 @@
 
 .tl-handle {
   position: absolute;
-  top: calc((var(--gp-rowPitch) - var(--gp-s8)) / 2);
+  top: calc(var(--lane, 0) * var(--gp-rowPitch) + (var(--gp-rowPitch) - var(--gp-s8)) / 2);
   width: var(--gp-s8);
   height: var(--gp-s8);
   border-radius: 50%;

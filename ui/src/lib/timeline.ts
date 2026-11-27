@@ -130,3 +130,30 @@ export function dragDates(
 export function labelFits(label: string, w: number): boolean {
   return w >= 9 + label.length * 6.6 + 8;
 }
+
+/** Gap between a bar and its outside label, and the clear space kept between neighbours on one lane. */
+export const LABEL_GAP = 18;
+const LANE_GAP = 4;
+
+/** Right edge of a bar including its outside label (when the label does not fit inside). */
+export function barExtent(x: number, w: number, label: string): number {
+  return labelFits(label, w) ? x + w : x + w + LABEL_GAP + label.length * 6.6 + 4;
+}
+
+/**
+ * Greedy lane assignment for one row: sorted by x, each span goes in the first lane whose last span
+ * ends before it starts. `end` is the right edge including any outside label. Returns lanes in input order.
+ */
+export function assignLanes(spans: { x: number; end: number }[]): { lanes: number[]; count: number } {
+  const order = spans.map((_, i) => i).sort((a, b) => spans[a]!.x - spans[b]!.x || a - b);
+  const laneEnd: number[] = [];
+  const lanes: number[] = new Array(spans.length).fill(0);
+  for (const i of order) {
+    const sp = spans[i]!;
+    let lane = laneEnd.findIndex((e) => e + LANE_GAP <= sp.x);
+    if (lane < 0) lane = laneEnd.length;
+    laneEnd[lane] = sp.end;
+    lanes[i] = lane;
+  }
+  return { lanes, count: Math.max(1, laneEnd.length) };
+}

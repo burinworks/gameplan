@@ -4,7 +4,10 @@ import { useHighlight } from '../api/live';
 import {
   DAY_W,
   HEADER_H,
+  LABEL_GAP,
   ROW_PITCH,
+  assignLanes,
+  barExtent,
   barGeom,
   dayIndex,
   labelFits,
@@ -81,11 +84,11 @@ export interface TimelineHandle {
 }
 
 const GROUP_H = 30;
-const LINK_GAP = 18;
+const LINK_GAP = LABEL_GAP;
 
 type Item =
   | { kind: 'group'; id: string; label: string; collapsed: boolean; y: number; h: number }
-  | { kind: 'row'; row: TLRow; y: number; h: number };
+  | { kind: 'row'; row: TLRow; y: number; h: number; lanes: number };
 
 interface Override extends Dates {
   base: Dates;
@@ -98,10 +101,7 @@ function BarView({
   clippedStart,
   clippedEnd,
   trackW,
-  inset,
-  visW,
-  nextX,
-  order,
+  lane,
   dragging,
   linkTarget,
   canLink,
@@ -116,14 +116,8 @@ function BarView({
   clippedStart: boolean;
   clippedEnd: boolean;
   trackW: number;
-  /** Left offset of the visible part of the bar (an earlier bar in the row covers the rest). */
-  inset: number;
-  /** Width of the visible part of the bar for its inside label. */
-  visW: number;
-  /** Left edge of the next bar in the row, or null. */
-  nextX: number | null;
-  /** Paint order within the row: later bars sit on top. */
-  order: number;
+  /** Line within the row (0 = first). */
+  lane: number;
   dragging: boolean;
   linkTarget: boolean;
   canLink: boolean;
@@ -133,7 +127,7 @@ function BarView({
   onHandleDown: (e: React.PointerEvent<HTMLElement>) => void;
 }) {
   const changed = useHighlight(bar.id);
-  const fits = labelFits(bar.label, visW);
+  const fits = labelFits(bar.label, w);
   const diamond = bar.diamond ?? bar.kind === 'milestone';
   const cls = [
     'tl-bar',
@@ -149,8 +143,9 @@ function BarView({
   ]
     .filter(Boolean)
     .join(' ');
-  const style = { left: `${x}px`, width: `${w}px`, zIndex: dragging ? 1000 : order + 1, '--bar-color': bar.color } as CSSProperties;
-  const outsideMax = Math.min(trackW, nextX ?? trackW) - (x + w + LINK_GAP) - 4;
+  const style = { left: `${x}px`, width: `${w}px`, '--lane': lane, '--bar-color': bar.color } as CSSProperties;
+  const outsideMax = trackW - (x + w + LINK_GAP) - 4;
+  const laneVar = { '--lane': lane } as CSSProperties;
   return (
     <>
       <div
@@ -171,7 +166,7 @@ function BarView({
         {bar.draggable && <span className="tl-edge tl-edge-l" style={{ width: edgeZone(w) }} aria-hidden="true" />}
         {bar.draggable && <span className="tl-edge tl-edge-r" style={{ width: edgeZone(w) }} aria-hidden="true" />}
         {fits && (
-          <span className="tl-bar-label" data-label dir="auto" title={bar.label} style={{ marginLeft: `${inset}px`, maxWidth: `${visW}px` }}>
+          <span className="tl-bar-label" data-label dir="auto" title={bar.label}>
             {bar.label}
           </span>
         )}
@@ -183,7 +178,7 @@ function BarView({
           data-label-outside
           dir="auto"
           title={bar.label}
-          style={{ left: `${x + w + LINK_GAP}px`, maxWidth: `${outsideMax}px` }}
+          style={{ ...laneVar, left: `${x + w + LINK_GAP}px`, maxWidth: `${outsideMax}px` }}
         >
           {bar.label}
         </span>
@@ -193,7 +188,7 @@ function BarView({
           className="tl-handle"
           data-link-handle={bar.id}
           aria-hidden="true"
-          style={{ left: `${x + w + 4}px` }}
+          style={{ ...laneVar, left: `${x + w + 4}px` }}
           onPointerDown={onHandleDown}
         />
       )}
@@ -249,24 +244,6 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
     },
     [overrides],
   );
-
-  /** Bars of one row sorted by x, with the part of each that its neighbours leave visible for labels. */
-  const layoutRow = (bars: TLBar[]) => {
-    const placed = bars.flatMap((b) => {
-      const e = effective(b);
-      const g = barGeom(e.start, e.end, from, to, dayW);
-      return g ? [{ b, g }] : [];
-    });
-    placed.sort((a, c) => a.g.x - c.g.x);
-    let prevRight = -Infinity;
-    return placed.map((p, i) => {
-      const nextX = placed[i + 1]?.g.x ?? null;
-      const visL = Math.max(p.g.x, prevRight);
-      const visR = Math.min(p.g.x + p.g.w, nextX ?? Infinity);
-      prevRight = Math.max(prevRight, p.g.x + p.g.w);
-      return { ...p, inset: visL - p.g.x, visW: visR - visL, nextX };
-    });
-  };
 
   // Drop an override once the bar's own dates move on (the write landed or someone else edited it).
   useEffect(() => {
@@ -327,8 +304,9 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
 
   const groupById = useMemo(() => new Map(groups.map((g) => [g.id, g])), [groups]);
 
-  const { items, bodyH } = useMemo(() => {
+  const { items, bodyH, laneOf } = useMemo(() => {
     const out: Item[] = [];
+    const laneOf = new Map<string, number>();
     let y = 0;
     let prev: string | undefined;
     for (const row of rows) {
@@ -339,11 +317,18 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
       }
       prev = row.group;
       if (g?.collapsed) continue;
-      out.push({ kind: 'row', row, y, h: ROW_PITCH });
-      y += ROW_PITCH;
+      // Lanes come from the saved dates so a bar being dragged does not change lines mid-drag.
+      const placed = row.bars.flatMap((b) => {
+        const g = barGeom(b.start, b.end, from, to, dayW);
+        return g ? [{ id: b.id, x: g.x, end: barExtent(g.x, g.w, b.label) }] : [];
+      });
+      const { lanes, count } = assignLanes(placed);
+      placed.forEach((p, i) => laneOf.set(p.id, lanes[i] ?? 0));
+      out.push({ kind: 'row', row, y, h: count * ROW_PITCH, lanes: count });
+      y += count * ROW_PITCH;
     }
-    return { items: out, bodyH: y };
-  }, [rows, groupById]);
+    return { items: out, bodyH: y, laneOf };
+  }, [rows, groupById, from, to, dayW]);
 
   const pos = useMemo(() => {
     const m = new Map<string, ArrowPos>();
@@ -352,11 +337,11 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
       for (const b of it.row.bars) {
         const e = effective(b);
         const g = barGeom(e.start, e.end, from, to, dayW);
-        if (g) m.set(b.id, { x: g.x, w: g.w, y: it.y + ROW_PITCH / 2 });
+        if (g) m.set(b.id, { x: g.x, w: g.w, y: it.y + (laneOf.get(b.id) ?? 0) * ROW_PITCH + ROW_PITCH / 2 });
       }
     }
     return m;
-  }, [items, effective, from, to, dayW]);
+  }, [items, laneOf, effective, from, to, dayW]);
 
   const ticks = useMemo(() => weekTicks(from, to, dayW, weekStart, today), [from, to, dayW, weekStart, today]);
   const weekends = useMemo(() => (showWeekends ? weekendCols(from, to, dayW) : []), [showWeekends, from, to, dayW]);
@@ -441,7 +426,11 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
                 <div key={`g:${it.id}`} className="tl-trackrow is-group" style={{ top: HEADER_H + it.y, height: it.h }} />
               ) : (
                 <div key={it.row.id} className="tl-trackrow" style={{ top: HEADER_H + it.y, height: it.h }}>
-                  {layoutRow(it.row.bars).map(({ b, g, inset, visW, nextX }, order) => {
+                  {it.row.bars.flatMap((b) => {
+                    const e = effective(b);
+                    const g = barGeom(e.start, e.end, from, to, dayW);
+                    return g ? [{ b, g }] : [];
+                  }).map(({ b, g }) => {
                     const draggable = b.draggable && !!onReschedule;
                     const shown: TLBar = { ...b, ...effective(b) };
                     return (
@@ -453,10 +442,7 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
                         clippedStart={g.clippedStart}
                         clippedEnd={g.clippedEnd}
                         trackW={totalW}
-                        inset={inset}
-                        visW={visW}
-                        nextX={nextX}
-                        order={order}
+                        lane={laneOf.get(b.id) ?? 0}
                         dragging={drag.dragId === b.id}
                         linkTarget={drag.link?.target === b.id && drag.link.fromId !== b.id}
                         canLink={canLinkAny && b.kind !== 'draft'}

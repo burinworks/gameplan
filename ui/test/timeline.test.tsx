@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../src/api/client';
-import { barGeom, DAY_W } from '../src/lib/timeline';
+import { barGeom, DAY_W, ROW_PITCH } from '../src/lib/timeline';
 import { Timeline, type TLBar, type TLLink, type TLRow } from '../src/timeline/Timeline';
 
 const FROM = '2026-11-16';
@@ -179,21 +179,39 @@ describe('Timeline', () => {
     expect(el('b1').textContent).not.toContain(long);
   });
 
-  it('overlapping bars in one row: labels stay in the visible part and later bars paint on top', () => {
-    const a = bar({ id: 'a', label: 'Outline', start: '2026-11-20', end: '2026-12-10' });
-    const b = bar({ id: 'b', label: 'Draft', start: '2026-11-23', end: '2026-12-20' });
+  it('overlapping bars in one row stack on two lanes, row is 2x ROW_PITCH, labels are not clipped', () => {
+    const a = bar({ id: 'a', kind: 'milestone', label: 'Outline', start: '2026-11-20', end: '2026-11-21' });
+    const b = bar({ id: 'b', kind: 'milestone', label: 'Draft', start: '2026-11-23', end: '2026-11-24' });
     setup([{ id: 'r', label: 'R', bars: [b, a] }]);
-    const px = (n: HTMLElement, k: 'left' | 'width') => parseFloat(n.style[k]);
-    const aRight = px(el('a'), 'left') + px(el('a'), 'width');
-    const bRight = px(el('b'), 'left') + px(el('b'), 'width');
-    // a keeps only 3 days before b starts: no room for its label, inside or outside
-    expect(el('a').querySelector('[data-label]')).toBeNull();
-    expect([...document.querySelectorAll('[data-label-outside]')].some((o) => o.textContent === 'Outline')).toBe(false);
-    // b's label starts where a ends and fills the rest of b
-    const label = el('b').querySelector('[data-label]') as HTMLElement;
-    expect(parseFloat(label.style.marginLeft)).toBe(aRight - px(el('b'), 'left'));
-    expect(parseFloat(label.style.maxWidth)).toBe(bRight - aRight);
-    expect(Number(el('b').style.zIndex)).toBeGreaterThan(Number(el('a').style.zIndex));
+    // a's outside label runs past b's start, so b goes on a second line
+    const row = el('a').parentElement as HTMLElement;
+    expect(row).toBe(el('b').parentElement);
+    expect(row.style.height).toBe(`${2 * ROW_PITCH}px`);
+    expect(el('a').style.getPropertyValue('--lane')).toBe('0');
+    expect(el('b').style.getPropertyValue('--lane')).toBe('1');
+    const outs = [...document.querySelectorAll('[data-label-outside]')] as HTMLElement[];
+    expect(outs.map((o) => o.textContent).sort()).toEqual(['Draft', 'Outline']);
+    for (const o of outs) expect(o.style.maxWidth).not.toBe('');
+    expect((document.querySelector('[data-row-label]')?.parentElement?.parentElement as HTMLElement).style.height).toBe(
+      `${2 * ROW_PITCH}px`,
+    );
+  });
+
+  it('a row without overlaps stays on one lane', () => {
+    setup([
+      {
+        id: 'r',
+        label: 'R',
+        bars: [bar({ id: 'a', start: '2026-11-20', end: '2026-11-22' }), bar({ id: 'b', start: '2026-12-20', end: '2026-12-22' })],
+      },
+    ]);
+    expect((el('a').parentElement as HTMLElement).style.height).toBe(`${ROW_PITCH}px`);
+    expect(el('b').style.getPropertyValue('--lane')).toBe('0');
+  });
+
+  it('bars never paint over the Today line and arrows', () => {
+    setup(rowOf(bar()));
+    expect(el('b1').style.zIndex).toBe('');
   });
 
   it('keeps short labels inside; labels carry dir=auto and a title', () => {
