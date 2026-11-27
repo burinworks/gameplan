@@ -63,9 +63,15 @@ function flash(id: string) {
 }
 
 const stack: string[] = [];
+/** Every event seen on the stream (any actor), newest last, so a caller can find its own. */
+const recent: EventRow[] = [];
+const waiters = new Set<() => void>();
 let lastBatch: string | null = null;
 export const undoStack = {
   push(e: EventRow): void {
+    recent.push(e);
+    if (recent.length > 200) recent.shift();
+    waiters.forEach((f) => f());
     if (e.actor !== 'you' || e.kind === 'reverted') return;
     if (e.batchId && e.batchId === lastBatch) return;
     lastBatch = e.batchId || null;
@@ -74,6 +80,36 @@ export const undoStack = {
   },
   pop: (): string | undefined => stack.pop(),
   size: (): number => stack.length,
+  /** Finds the newest seen event matching `match`, drops it from the undo stack and returns its id. */
+  take(match: (e: EventRow) => boolean): string | undefined {
+    for (let i = recent.length - 1; i >= 0; i--) {
+      const e = recent[i]!;
+      if (!match(e)) continue;
+      const at = stack.lastIndexOf(e.id);
+      if (at >= 0) stack.splice(at, 1);
+      recent.splice(i, 1);
+      return e.id;
+    }
+    return undefined;
+  },
+  /** Like `take`, but waits up to `ms` for a matching event to arrive. */
+  waitFor(match: (e: EventRow) => boolean, ms = 2000): Promise<string | undefined> {
+    const now = undoStack.take(match);
+    if (now || ms <= 0) return Promise.resolve(now);
+    return new Promise((resolve) => {
+      const done = (id: string | undefined) => {
+        clearTimeout(timer);
+        waiters.delete(check);
+        resolve(id);
+      };
+      const check = () => {
+        const id = undoStack.take(match);
+        if (id) done(id);
+      };
+      const timer = setTimeout(() => done(undefined), ms);
+      waiters.add(check);
+    });
+  },
 };
 
 export async function undoLast(): Promise<void> {

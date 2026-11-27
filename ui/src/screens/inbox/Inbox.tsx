@@ -1,8 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useLocation } from 'wouter';
-import { useCapture, useInbox, useProjects, useSearch, useTriage, type TriageTarget } from '../../api/hooks';
-import { undoLast } from '../../api/live';
+import { useCapture, useInbox, useProjects, useRevert, useSearch, useTriage, type TriageTarget } from '../../api/hooks';
+import { undoStack } from '../../api/live';
 import { paths } from '../../app/routes';
 import { useShortcut } from '../../app/shortcuts';
 import { fmtActorAt } from '../../lib/format';
@@ -111,6 +111,7 @@ export function Inbox() {
   const inbox = useInbox();
   const capture = useCapture();
   const triage = useTriage();
+  const revert = useRevert();
   const [text, setText] = useState('');
   const [open, setOpen] = useState<OpenMenu>(null);
   const [selId, setSelId] = useState<string | null>(null);
@@ -155,14 +156,19 @@ export function Inbox() {
   const onUndo = () => {
     const id = undo?.id;
     setUndo(null);
-    void undoLast().then(() => {
-      if (id)
-        setGone((g) => {
-          const n = new Set(g);
-          n.delete(id);
-          return n;
-        });
-      refresh();
+    if (!id) return;
+    void undoStack.waitFor((e) => e.kind === 'triaged' && e.entityId === id).then((eventId) => {
+      if (!eventId) return;
+      revert.mutate(eventId, {
+        onSuccess: () => {
+          setGone((g) => {
+            const n = new Set(g);
+            n.delete(id);
+            return n;
+          });
+          refresh();
+        },
+      });
     });
   };
 
@@ -186,7 +192,7 @@ export function Inbox() {
   return (
     <section className="gp-inbox" aria-label="Inbox">
       <h1 className="gp-inbox__title">Inbox</h1>
-      <Field value={text} onChange={setText} onEnter={submit} label="Capture" placeholder="Capture something" />
+      <Field value={text} onChange={setText} onEnter={submit} label="Capture" placeholder="Capture…" />
       {undo && (
         <div className="gp-inbox__undo">
           <Undo key={undo.id} message={undo.message} onUndo={onUndo} onExpire={() => setUndo(null)} />

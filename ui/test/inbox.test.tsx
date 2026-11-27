@@ -4,7 +4,9 @@ import userEvent from '@testing-library/user-event';
 import { Router } from 'wouter';
 import { memoryLocation } from 'wouter/memory-location';
 import { describe, expect, it } from 'vitest';
+import type { EventRow } from '../src/api/types';
 import { useErrorLine } from '../src/api/hooks';
+import { undoStack } from '../src/api/live';
 import { Inbox } from '../src/screens/inbox/Inbox';
 import { inboxItems, inboxPayload, projects, taskHits } from './fixtures/inbox';
 import { mockFetch } from './setup';
@@ -22,6 +24,8 @@ function setup(routes: Parameters<typeof mockFetch>[0] = {}, items = inboxItems)
     'POST /api/inbox/i1/triage': { item: { id: 'i1' } },
     'POST /api/inbox/i2/triage': { item: { id: 'i2' } },
     'POST /api/inbox/i4/triage': { item: { id: 'i4' } },
+    'POST /api/events/ev-i1/revert': { ok: true },
+    'POST /api/events/ev-cap/revert': { ok: true },
     ...routes,
   });
   const loc = memoryLocation({ path: '/inbox', record: true });
@@ -36,6 +40,10 @@ function setup(routes: Parameters<typeof mockFetch>[0] = {}, items = inboxItems)
   );
   return { fetchFn, loc };
 }
+
+const ev = (id: string, entityId: string, kind: string, batchId: string): EventRow =>
+  ({ id, entityId, kind, batchId, actor: 'you', entity: 'inbox_item', at: new Date().toISOString() }) as unknown as EventRow;
+const reverts = (fn: ReturnType<typeof mockFetch>) => fn.mock.calls.map(([u]) => String(u)).filter((u) => u.endsWith('/revert'));
 
 const posts = (fn: ReturnType<typeof mockFetch>) =>
   fn.mock.calls
@@ -110,5 +118,26 @@ describe('Inbox', () => {
     await screen.findAllByRole('listitem');
     await userEvent.keyboard('{ArrowDown}{ArrowDown}d');
     await waitFor(() => expect(posts(fetchFn)).toContainEqual(['/api/inbox/i2/triage', { as: 'dismiss' }]));
+  });
+
+  it('undo reverts its own triage event, not a later capture', async () => {
+    const { fetchFn } = setup();
+    const row = (await screen.findByText('Call the landlord about the lease')).closest('li')!;
+    await userEvent.click(within(row).getByRole('button', { name: 'Dismiss' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Undo' }));
+    undoStack.push(ev('ev-i1', 'i1', 'triaged', 'b1'));
+    undoStack.push(ev('ev-cap', 'i9', 'created', 'b2'));
+    await waitFor(() => expect(reverts(fetchFn)).toEqual(['/api/events/ev-i1/revert']));
+    expect(await screen.findByText('Call the landlord about the lease')).toBeInTheDocument();
+  });
+
+  it('undo uses an event that already arrived', async () => {
+    const { fetchFn } = setup();
+    const row = (await screen.findByText('Call the landlord about the lease')).closest('li')!;
+    await userEvent.click(within(row).getByRole('button', { name: 'Dismiss' }));
+    undoStack.push(ev('ev-i1', 'i1', 'triaged', 'b1'));
+    undoStack.push(ev('ev-cap', 'i9', 'created', 'b2'));
+    await userEvent.click(await screen.findByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(reverts(fetchFn)).toEqual(['/api/events/ev-i1/revert']));
   });
 });
