@@ -1,14 +1,14 @@
 import type { DatabaseSync } from 'node:sqlite';
 
 export interface SearchHit {
-  type: 'project' | 'milestone' | 'task' | 'todo' | 'attachment';
+  type: 'project' | 'milestone' | 'task' | 'todo' | 'attachment' | 'inbox';
   id: string;
   title: string;
   project: string;
   path: string;
 }
 
-const TYPE_RANK: Record<SearchHit['type'], number> = { project: 0, milestone: 1, task: 2, todo: 3, attachment: 4 };
+const TYPE_RANK: Record<SearchHit['type'], number> = { project: 0, milestone: 1, task: 2, todo: 3, attachment: 4, inbox: 5 };
 
 /** Case-insensitive substring search over names, titles and urls; active projects first. */
 export function search(db: DatabaseSync, q: string, limit = 20): SearchHit[] {
@@ -35,7 +35,10 @@ export function search(db: DatabaseSync, q: string, limit = 20): SearchHit[] {
        SELECT 'attachment', a.id, COALESCE(a.title, a.url), p.slug, p.status, p.name || ' › ' || t.title || ' › ' || COALESCE(a.title, a.url), 0
          FROM attachments a JOIN tasks t ON t.id = a.task_id JOIN milestones m ON m.id = t.milestone_id JOIN projects p ON p.id = m.project_id
          WHERE a.archived_at IS NULL AND t.archived_at IS NULL AND m.archived_at IS NULL AND p.archived_at IS NULL
-           AND (a.title LIKE :q ESCAPE '\\' OR a.url LIKE :q ESCAPE '\\')`,
+           AND (a.title LIKE :q ESCAPE '\\' OR a.url LIKE :q ESCAPE '\\')
+       UNION ALL
+       SELECT 'inbox', i.id, i.text, '', 'active', 'Inbox › ' || i.text, 0
+         FROM inbox_items i WHERE i.triaged_at IS NULL AND i.archived_at IS NULL AND i.text LIKE :q ESCAPE '\\'`,
     )
     .all({ q: like }) as { type: SearchHit['type']; id: string; title: string; slug: string; status: string; path: string; o: number }[];
   rows.sort(

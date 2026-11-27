@@ -17,6 +17,7 @@ import {
   toDayPlanItem,
   toDependency,
   toEvent,
+  toInboxItem,
   toMilestone,
   toProject,
   toTask,
@@ -32,6 +33,7 @@ import {
   type EventKind,
   type EventRow,
   type Executor,
+  type InboxItem,
   type LinkInput,
   type Milestone,
   type MilestoneStatus,
@@ -83,6 +85,11 @@ export interface MilestoneInput {
 export type CreateTaskInput = TaskInput & { todos?: TodoInput[]; after?: string[]; links?: LinkInput[] };
 export type UpdateTaskInput = Partial<TaskInput> & { status?: TaskStatus; milestoneId?: string };
 export type DependencyTarget = { taskId: string } | { milestoneId: string };
+
+export type TriageTarget =
+  | { as: 'task'; milestoneId: string; task?: Partial<CreateTaskInput> }
+  | { as: 'todo'; taskId: string }
+  | { as: 'dismiss' };
 
 export interface AttachInput {
   role: AttachmentRole;
@@ -854,6 +861,63 @@ export class Store {
   applyDayPlan(date: string, items: { taskId: string; when: string | null }[]): void {
     this.q('DELETE FROM day_plan_items WHERE date = ?').run(date);
     items.forEach((it, i) => this.q('INSERT INTO day_plan_items(date, task_id, ord, when_text) VALUES (?,?,?,?)').run(date, it.taskId, i, it.when));
+  }
+
+  // ---------- inbox ----------
+
+  inboxItem(id: string): InboxItem {
+    const r = this.q('SELECT * FROM inbox_items WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+    if (!r) throw new GameplanError('not_found', `inbox item ${id} not found`);
+    return toInboxItem(r);
+  }
+
+  /** Loose text for later (1–500 chars). */
+  capture(ctx: Ctx, text: string): InboxItem {
+    if (typeof text !== 'string' || !text.trim()) throw new GameplanError('invalid', 'text is required');
+    const t = text.trim();
+    if (t.length > 500) throw new GameplanError('invalid', `an inbox item is at most 500 characters (got ${t.length})`);
+    return this.write(ctx, (c) => {
+      const id = newId('inb');
+      this.q('INSERT INTO inbox_items(id, text, actor, created_at) VALUES (?,?,?,?)').run(id, t, c.actor, this.clock.now());
+      this.record(c, { entity: 'inbox', entityId: id, projectId: null, label: t.slice(0, 80), kind: 'captured', after: { text: t, archivedAt: null } });
+      return this.inboxItem(id);
+    });
+  }
+
+  /** Turns an inbox item into a task or a to-do, or dismisses it — one batch. Already handled → `conflict`. */
+  triageInbox(ctx: Ctx, id: string, to: TriageTarget): { item: InboxItem; created?: { entity: 'task' | 'todo'; id: string } } {
+    return this.write(ctx, (c) => {
+      const item = this.inboxItem(id);
+      if (item.triagedAt || item.archivedAt) throw new GameplanError('conflict', `inbox item "${item.text.slice(0, 40)}" was already ${item.triagedAt ? 'triaged' : 'dismissed'}`);
+      const as = oneOf('as', to?.as, ['task', 'todo', 'dismiss'] as const);
+      let created: { entity: 'task' | 'todo'; id: string } | undefined;
+      let projectId: string | null = null;
+      const now = this.clock.now();
+      if (as === 'task') {
+        const t = to as Extract<TriageTarget, { as: 'task' }>;
+        const task = this.createTask(c, t.milestoneId, { title: item.text, ...(t.task ?? {}) });
+        created = { entity: 'task', id: task.id };
+        projectId = this.projectIdOfTask(task.id);
+      } else if (as === 'todo') {
+        const t = to as Extract<TriageTarget, { as: 'todo' }>;
+        const [td] = this.addTodos(c, t.taskId, [{ title: item.text }]);
+        created = { entity: 'todo', id: td!.id };
+        projectId = this.projectIdOfTask(t.taskId);
+      }
+      const dest = created ? { as, ...created } : { as };
+      if (as === 'dismiss') this.q('UPDATE inbox_items SET archived_at = ? WHERE id = ?').run(now, id);
+      else this.q('UPDATE inbox_items SET triaged_at = ?, triaged_to_json = ? WHERE id = ?').run(now, JSON.stringify(dest), id);
+      this.record(c, {
+        entity: 'inbox',
+        entityId: id,
+        projectId,
+        label: item.text.slice(0, 80),
+        kind: 'triaged',
+        before: { triagedAt: null, archivedAt: null },
+        after: { triagedAt: as === 'dismiss' ? null : now, archivedAt: as === 'dismiss' ? now : null, to: dest },
+      });
+      return { item: this.inboxItem(id), ...(created ? { created } : {}) };
+    });
   }
 
   // ---------- to-dos ----------

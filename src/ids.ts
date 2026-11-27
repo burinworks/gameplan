@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 
-export type IdPrefix = 'prj' | 'ar' | 'ms' | 'tk' | 'td' | 'att' | 'dep' | 'ev' | 'bat';
+export type IdPrefix = 'prj' | 'ar' | 'ms' | 'tk' | 'td' | 'att' | 'dep' | 'ev' | 'bat' | 'inb';
 
 let last = 0;
 let seq = 0;

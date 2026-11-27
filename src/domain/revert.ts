@@ -25,6 +25,8 @@ function snapshot(store: Store, ev: EventRow): Record<string, unknown> | null {
         return { ...store.todo(ev.entityId, { archived: true }) };
       case 'attachment':
         return { ...store.attachment(ev.entityId, { archived: true }) };
+      case 'inbox':
+        return { ...store.inboxItem(ev.entityId) };
       default:
         return null;
     }
@@ -84,6 +86,14 @@ function undo(store: Store, c: WCtx, ev: EventRow): void {
       store.applyDayPlan(ev.entityId, before.items as { taskId: string; when: string | null }[]);
       return;
     }
+    case 'captured':
+      expectAfter(store, ev, ['archivedAt']);
+      store.q('UPDATE inbox_items SET archived_at = ? WHERE id = ?').run(store.clock.now(), ev.entityId);
+      return;
+    case 'triaged':
+      expectAfter(store, ev, ['triagedAt', 'archivedAt']);
+      store.q('UPDATE inbox_items SET triaged_at = NULL, triaged_to_json = NULL, archived_at = NULL WHERE id = ?').run(ev.entityId);
+      return;
     case 'todo_done':
     case 'todo_undone':
       expectAfter(store, ev, ['done']);

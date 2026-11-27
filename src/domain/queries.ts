@@ -470,6 +470,12 @@ export function home(db: DatabaseSync, today: string, settings: Settings) {
   return { today, todayTasks, atRisk, rescheduled, plan, pickUp, alsoToday, needsReview, doneThisWeek };
 }
 
+/** Untriaged, undismissed items, newest first. */
+export function inbox(db: DatabaseSync): { count: number; items: { id: string; text: string; by: string; at: string }[] } {
+  const rows = db.prepare('SELECT * FROM inbox_items WHERE triaged_at IS NULL AND archived_at IS NULL ORDER BY created_at DESC, rowid DESC').all() as Row[];
+  return { count: rows.length, items: rows.map((r) => ({ id: String(r.id), text: String(r.text), by: String(r.actor), at: String(r.created_at) })) };
+}
+
 export function timeline(db: DatabaseSync, today: string, from: string, to: string) {
   const rows = db.prepare("SELECT * FROM projects WHERE archived_at IS NULL AND status = 'active' ORDER BY ord, rowid").all() as Row[];
   return rows.map((r) => {
