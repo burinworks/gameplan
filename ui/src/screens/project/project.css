@@ -30,6 +30,8 @@
 /* title acts as the menu trigger */
 .pj-title {
   margin: 0;
+  flex: none;
+  max-width: 100%;
   min-width: 0;
   font-size: var(--gp-fs-heading);
   line-height: var(--gp-lh-heading);
@@ -115,7 +117,7 @@
   display: flex;
   align-items: center;
   gap: var(--gp-s6);
-  max-width: 320px;
+  max-width: calc(var(--gp-s32) * 10);
   min-width: 0;
 }
 .pl-title {
@@ -148,7 +150,7 @@
   gap: var(--gp-s8);
 }
 .pl-bar {
-  width: 48px;
+  width: calc(var(--gp-s24) * 2);
   height: var(--gp-s4);
   border-radius: var(--gp-r2);
   background: var(--gp-track);

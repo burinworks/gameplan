@@ -59,7 +59,7 @@ export function ProjectScreen({ slug, tab }: { slug: string; tab: ProjectTab }) 
           <Menu label="More" trigger={<Icon name="more" size={14} />} items={[{ label: 'New milestone', onSelect: () => openNewMilestone(slug) }]} />
         </div>
       </header>
-      {tab === 'timeline' && <TimelineTab slug={slug} zoom={zoom} groupBy={groupBy} />}
+      {tab === 'timeline' && <TimelineTab key={slug} slug={slug} zoom={zoom} groupBy={groupBy} />}
       {tab === 'list' && <ListTab slug={slug} />}
       {tab === 'updates' && <UpdatesTab slug={slug} />}
     </section>

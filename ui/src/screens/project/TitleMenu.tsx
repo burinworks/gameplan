@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { useLocation } from 'wouter';
-import { useArchive, useProject } from '../../api/hooks';
+import { useProject } from '../../api/hooks';
 import { paths } from '../../app/routes';
-import { Button, Menu, Sheet, type MenuItem } from '../../ui';
+import { Menu, type MenuItem } from '../../ui';
+import { ArchiveProjectSheet } from './ArchiveProjectSheet';
 
 /** The project title; it opens the project menu. */
 export function TitleMenu({ slug }: { slug: string }) {
   const [, navigate] = useLocation();
   const project = useProject(slug).data?.project;
-  const archive = useArchive();
   const [confirming, setConfirming] = useState(false);
 
   const gh = project?.github ?? null;
@@ -20,30 +20,9 @@ export function TitleMenu({ slug }: { slug: string }) {
 
   const name = project?.name ?? slug;
   return (
-    <h1 className="pj-title" dir="auto">
+    <h1 className="pj-title" dir="auto" title={name}>
       <Menu align="start" label={name} trigger={<span className="pj-title__text">{name}</span>} items={items} />
-      {confirming && project && (
-        <Sheet
-          title={`Archive ${project.name}?`}
-          onClose={() => setConfirming(false)}
-          footer={
-            <>
-              <Button variant="secondary" label="Cancel" onClick={() => setConfirming(false)} />
-              <Button
-                variant="primary"
-                label="Archive"
-                onClick={() => {
-                  archive.mutate({ entity: 'project', id: project.id });
-                  setConfirming(false);
-                  navigate(paths.home);
-                }}
-              />
-            </>
-          }
-        >
-          <span className="gp-sr">{project.name}</span>
-        </Sheet>
-      )}
+      {confirming && project && <ArchiveProjectSheet project={project} onClose={() => setConfirming(false)} />}
     </h1>
   );
 }
