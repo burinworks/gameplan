@@ -3,11 +3,12 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { Clock } from '../clock.js';
 import { planMilestone } from '../domain/plan.js';
-import { home, listProjects, milestoneDetail, projectTree, taskDetail, updates, type TreeMilestone, type TreeTask } from '../domain/queries.js';
+import { home, inbox, listProjects, milestoneDetail, projectTree, taskDetail, updates, type TreeMilestone, type TreeTask } from '../domain/queries.js';
 import { rescheduleTask } from '../domain/reschedule.js';
 import { search } from '../domain/search.js';
 import { getSettings } from '../domain/settings.js';
 import type { Store } from '../domain/store.js';
+import { listTemplates } from '../domain/templates.js';
 import { ATTACHMENT_KIND, ATTACHMENT_ROLE, EXECUTOR, GameplanError, MILESTONE_STATUS, PRIORITY, PROJECT_STATUS, TASK_STATUS, type Ctx } from '../domain/types.js';
 
 export interface ToolDeps {
@@ -22,10 +23,15 @@ export const INSTRUCTIONS = `Gameplan is the user's plan of record: Projects ›
 Every change you make is logged with your name and shown to the user.
 - Before starting a milestone, plan it in one plan_milestone call (tasks, to-dos, dependencies).
 - Call complete_todo right after you finish each to-do.
-- attach every commit / PR you make for a task as a deliverable.
+- Finishing a task sends it to the user's review (status review). Never tell the user it is done; say it is waiting for their review.
+- attach every commit / PR / ticket you make or use for a task.
+- End every work session on a task with set_resume_note: one line on where you stopped and what comes next.
+- Put loose ideas and side issues in the inbox with capture instead of creating tasks.
 - When dates slip, reschedule_task with a reason (cascade: true to push dependents).
 - Read cheaply: get_today, get_at_risk, get_project depth=tasks; get_task for one task's details.
 - Never archive unless the user asks.`;
+
+const REVIEW_NOTE = "waiting for the user's review — tell them it is ready to review, not that it is done";
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD');
 const todoItem = z.object({ title: z.string().min(1), after: z.array(z.number().int()).optional().describe('indices of to-dos in this list that must be done first; default: the previous one') });
@@ -37,7 +43,7 @@ const taskFields = {
   start: date.optional(),
   end: date.optional().describe('inclusive; give start and end together, or neither'),
   priority: z.enum(PRIORITY).optional(),
-  executor: z.enum(EXECUTOR).optional().describe('who does it: manual (the user) or ai'),
+  executor: z.enum(EXECUTOR).optional().describe('who does it: manual (the user), ai, or together'),
   important: z.boolean().optional(),
   labels: z.array(z.string()).optional(),
   todos: z.array(todoItem).optional(),
@@ -165,8 +171,19 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     };
   });
 
-  tool('get_today', "Open tasks scheduled for today (start ≤ today ≤ end) across active projects.", {}, () =>
-    home(db, today(), getSettings(db)).todayTasks.map((t) => ({ id: t.id, title: t.title, project: t.project, end: t.end, progress: `${t.progress.done}/${t.progress.total}`, executor: t.executor })),
+  tool(
+    'get_today',
+    "The user's day: plan (up to 3 tasks they chose, with when), pick_up (tasks with a resume note), also_today (other open tasks dated today), needs_review (finished AI work waiting for them).",
+    {},
+    () => {
+      const h = home(db, today(), getSettings(db));
+      return {
+        plan: h.plan.map((p) => ({ n: p.n, id: p.task.id, title: p.task.title, project: p.task.project, when: p.when, ...(p.resume ? { resume: p.resume.note } : {}) })),
+        pick_up: h.pickUp.map((p) => ({ id: p.task.id, title: p.task.title, project: p.task.project, resume: p.resume.note })),
+        also_today: h.alsoToday.map((t) => ({ id: t.id, title: t.title, project: t.project, end: t.end, progress: `${t.progress.done}/${t.progress.total}`, executor: t.executor })),
+        needs_review: h.needsReview.map((r) => ({ id: r.task.id, title: r.task.title, project: r.project, by: r.by })),
+      };
+    },
   );
 
   tool('get_at_risk', 'Tasks that are late or in conflict (start before a dependency ends, end after milestone due), with reasons.', {}, () =>
@@ -192,12 +209,12 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       })),
   );
 
-  tool('search', 'Search projects, milestones, tasks, to-dos and attachments by text.', { q: z.string().min(1) }, (a) => search(db, a.q));
+  tool('search', 'Search projects, milestones, tasks, to-dos, attachments and inbox items by text.', { q: z.string().min(1) }, (a) => search(db, a.q));
 
   // ----- projects & milestones -----
   tool(
     'create_project',
-    'Create a project with optional areas and a first milestone.',
+    'Create a project with optional areas and a first milestone, or from a template (see list_templates) with a start date.',
     {
       name: z.string().min(1),
       color: z.string().optional(),
@@ -206,6 +223,8 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       repo: z.string().optional(),
       github: z.string().optional().describe('owner/name'),
       vault_note: z.string().optional(),
+      template: z.enum(['report', 'launch', 'research']).optional().describe('built-in template: milestones, dated tasks and to-dos'),
+      start_date: date.optional().describe('template start date (default today)'),
     },
     (a) => {
       const p = store.createProject(ctx(), {
@@ -216,8 +235,11 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         repo: a.repo,
         github: a.github,
         vaultNote: a.vault_note,
+        template: a.template,
+        startDate: a.start_date,
       });
-      return { id: p.id, slug: p.slug, name: p.name, areas: p.areas.map((x) => x.name) };
+      const milestones = (db.prepare('SELECT count(*) AS n FROM milestones WHERE project_id = ? AND archived_at IS NULL').get(p.id) as { n: number }).n;
+      return { id: p.id, slug: p.slug, name: p.name, areas: p.areas.map((x) => x.name), milestones: Number(milestones) };
     },
   );
 
@@ -321,7 +343,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     (a) => {
       const { id, milestone_id, ...rest } = a;
       const t = store.updateTask(ctx(), id, { ...rest, milestoneId: milestone_id });
-      return { id: t.id, title: t.title, status: t.status, priority: t.priority, start: t.start, end: t.end };
+      return { id: t.id, title: t.title, status: t.status, priority: t.priority, start: t.start, end: t.end, ...(t.status === 'review' ? { note: REVIEW_NOTE } : {}) };
     },
   );
 
@@ -340,8 +362,67 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   tool('complete_todo', 'Tick a to-do (done: false unticks). Call as soon as you finish a to-do.', { id: z.string(), done: z.boolean().optional() }, (a) => {
     const t = store.setTodoDone(ctx(), a.id, a.done ?? true);
     const task = store.task(t.taskId);
-    return { id: t.id, done: t.done, task: { id: task.id, status: task.status } };
+    return { id: t.id, done: t.done, task: { id: task.id, status: task.status }, ...(task.status === 'review' ? { note: REVIEW_NOTE } : {}) };
   });
+
+  // ----- work: resume notes, day plan, inbox, templates -----
+  tool(
+    'set_resume_note',
+    'Call at the end of every work session on a task: one line on where you stopped and what comes next. Empty note clears it.',
+    { task_id: z.string(), note: z.string().max(200) },
+    (a) => {
+      const t = store.setResumeNote(ctx(), a.task_id, a.note);
+      return { id: t.id, resume: t.resumeNote };
+    },
+  );
+
+  tool(
+    'plan_day',
+    "Set the user's plan for a day: up to 3 open tasks in order, each with an optional when (\"after standup\"). Replaces that day's plan. Only when the user asks.",
+    { date: date.optional().describe('default today'), items: z.array(z.object({ task_id: z.string(), when: z.string().max(40).optional() })).max(3) },
+    (a) => {
+      const d = a.date ?? today();
+      return { date: d, items: store.planDay(ctx(), d, a.items.map((x) => ({ taskId: x.task_id, when: x.when }))).map((x) => ({ task_id: x.taskId, when: x.when })) };
+    },
+  );
+
+  tool('capture', 'Put anything loose you notice here instead of creating tasks: one line for the user to triage later.', { text: z.string().min(1).max(500) }, (a) => {
+    const i = store.capture(ctx(), a.text);
+    return { id: i.id };
+  });
+
+  tool('get_inbox', 'Untriaged inbox items, newest first.', {}, () => inbox(db));
+
+  tool(
+    'triage',
+    'Handle an inbox item: as task (needs milestone_id; title defaults to the item text), as todo (needs task_id), or dismiss.',
+    {
+      item_id: z.string(),
+      as: z.enum(['task', 'todo', 'dismiss']),
+      milestone_id: z.string().optional(),
+      task_id: z.string().optional(),
+      title: z.string().optional().describe('task title (default: the item text)'),
+      area: z.string().optional(),
+      start: date.optional(),
+      end: date.optional(),
+      priority: z.enum(PRIORITY).optional(),
+    },
+    (a) => {
+      let to: Parameters<Store['triageInbox']>[2];
+      if (a.as === 'task') {
+        if (!a.milestone_id) throw new GameplanError('invalid', 'as: task needs milestone_id');
+        const task = Object.fromEntries(Object.entries({ title: a.title, area: a.area, start: a.start, end: a.end, priority: a.priority }).filter(([, v]) => v !== undefined));
+        to = { as: 'task', milestoneId: a.milestone_id, task };
+      } else if (a.as === 'todo') {
+        if (!a.task_id) throw new GameplanError('invalid', 'as: todo needs task_id');
+        to = { as: 'todo', taskId: a.task_id };
+      } else to = { as: 'dismiss' };
+      const r = store.triageInbox(ctx(), a.item_id, to);
+      return { item_id: r.item.id, ...(r.created ? { created: r.created } : {}) };
+    },
+  );
+
+  tool('list_templates', 'Built-in project templates for create_project (template + start_date).', {}, () => listTemplates());
 
   // ----- dependencies -----
   tool(

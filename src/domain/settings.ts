@@ -16,6 +16,8 @@ export const DEFAULTS = {
   agents_need_review: true,
   agents_can_archive: false,
   agents_can_create_projects: true,
+  /** When set, /mcp requires `Authorization: Bearer <token>`. Never returned over HTTP. */
+  mcp_token: null as string | null,
 };
 
 export type Settings = typeof DEFAULTS;
@@ -45,6 +47,11 @@ export function validateSettingsPatch(patch: Record<string, unknown>): SettingsP
   if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) throw new GameplanError('invalid', 'settings patch must be an object');
   for (const [key, value] of Object.entries(patch)) {
     if (!(key in DEFAULTS)) throw new GameplanError('invalid', `unknown setting "${key}" (valid: ${Object.keys(DEFAULTS).join(', ')})`);
+    if (key === 'mcp_token') {
+      if (value !== null && (typeof value !== 'string' || !/^\S{16,200}$/.test(value)))
+        throw new GameplanError('invalid', 'setting "mcp_token" must be null or 16–200 characters without spaces');
+      continue;
+    }
     const def = DEFAULTS[key as keyof Settings];
     if (typeof value !== typeof def) throw new GameplanError('invalid', `setting "${key}" must be a ${typeof def}`);
     const allowed = ENUMS[key as keyof Settings];
@@ -55,6 +62,12 @@ export function validateSettingsPatch(patch: Record<string, unknown>): SettingsP
       throw new GameplanError('invalid', 'setting "rescheduled_days" must be an integer 1..365');
   }
   return patch as SettingsPatch;
+}
+
+/** Settings safe to send over HTTP: the MCP token becomes `mcp_token_set`. */
+export function publicSettings(s: Settings): Omit<Settings, 'mcp_token'> & { mcp_token_set: boolean } {
+  const { mcp_token, ...rest } = s;
+  return { ...rest, mcp_token_set: mcp_token !== null };
 }
 
 /** Agent policy. `you` is never restricted. */

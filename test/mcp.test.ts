@@ -44,10 +44,11 @@ const PLAN = {
 };
 
 describe('mcp tools', () => {
-  it('exposes 24 tools with descriptions', async () => {
+  it('exposes 30 tools with descriptions', async () => {
     const { client } = await connect();
     const { tools } = await client.listTools();
-    expect(tools.length).toBe(24);
+    expect(tools.length).toBe(30);
+    expect(tools.map((t) => t.name)).not.toContain('review_task');
     expect(tools.every((t) => (t.description ?? '').length > 10)).toBe(true);
     expect(tools.find((t) => t.name === 'plan_milestone')!.description).toMatch(/one call/i);
   });
@@ -105,7 +106,7 @@ describe('mcp tools', () => {
     const { call, msId } = await connect();
     expect((await call('list_projects')).data.map((p: { slug: string }) => p.slug)).toEqual(['learn-studio']);
     const t = await call('create_task', { milestone_id: msId, title: 'Today', start: '2026-11-25', end: '2026-11-27', todos: [{ title: 'x' }], links: [{ url: 'projects/learn/spec.md' }] });
-    expect((await call('get_today')).data.map((x: { title: string }) => x.title)).toEqual(['Today']);
+    expect((await call('get_today')).data.also_today.map((x: { title: string }) => x.title)).toEqual(['Today']);
     const t2 = await call('create_task', { milestone_id: msId, title: 'Late', start: '2026-11-01', end: '2026-11-10' });
     expect((await call('get_at_risk')).data[0].reasons[0]).toContain('days late');
     expect((await call('add_todos', { task_id: t.data.id, todos: [{ title: 'y' }] })).isError).toBe(false);
@@ -152,11 +153,68 @@ describe('mcp over http', () => {
       await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`)));
       const r = (await client.callTool({ name: 'get_today', arguments: {} })) as Res;
       expect(r.isError).not.toBe(true);
-      expect(JSON.parse(r.content[0]!.text)).toEqual([]);
+      expect(JSON.parse(r.content[0]!.text)).toEqual({ plan: [], pick_up: [], also_today: [], needs_review: [] });
       await client.callTool({ name: 'list_projects', arguments: {} });
       const agents = await (await fetch(`http://127.0.0.1:${port}/api/agents`)).json();
       expect(agents).toEqual([expect.objectContaining({ name: 'claude-code', calls: 2 })]);
       await client.close();
+    } finally {
+      server.close();
+    }
+  });
+});
+
+describe('mcp work features', () => {
+  it('complete_todo on the last to-do returns review; set_resume_note stores the agent', async () => {
+    const { call, msId, store } = await connect();
+    const t = await call('create_task', { milestone_id: msId, title: 'Draft', todos: [{ title: 'only' }] });
+    const td = store.todosOf(t.data.id)[0]!;
+    const r = await call('complete_todo', { id: td.id });
+    expect(r.data.task.status).toBe('review');
+    expect(r.data.note).toMatch(/waiting for the user's review/);
+    const u = await call('update_task', { id: t.data.id, status: 'done' });
+    expect(u.data.status).toBe('review');
+    const n = await call('set_resume_note', { task_id: t.data.id, note: 'Section 2 next' });
+    expect(n.isError).toBe(false);
+    expect(store.task(t.data.id)).toMatchObject({ resumeNote: 'Section 2 next', resumeBy: 'ai:codex' });
+    const today = await call('get_today');
+    expect(today.data.needs_review.map((x: { title: string }) => x.title)).toEqual(['Draft']);
+  });
+
+  it('capture shows in get_inbox; triage; plan_day; list_templates; create_project from a template', async () => {
+    const { call, msId } = await connect();
+    const c = await call('capture', { text: 'Ping legal about the logo' });
+    const ib = await call('get_inbox');
+    expect(ib.data.items).toEqual([expect.objectContaining({ id: c.data.id, text: 'Ping legal about the logo', by: 'ai:codex' })]);
+    const tr = await call('triage', { item_id: c.data.id, as: 'task', milestone_id: msId });
+    expect(tr.data.created.entity).toBe('task');
+    const pd = await call('plan_day', { items: [{ task_id: tr.data.created.id, when: 'after standup' }] });
+    expect(pd.isError).toBe(false);
+    expect((await call('get_today')).data.plan[0]).toEqual(expect.objectContaining({ title: 'Ping legal about the logo', when: 'after standup' }));
+    expect((await call('list_templates')).data.map((t: { id: string }) => t.id)).toEqual(['report', 'launch', 'research']);
+    const p = await call('create_project', { name: 'Spring launch', template: 'launch', start_date: '2027-03-01' });
+    expect(p.data.milestones).toBe(4);
+  });
+});
+
+describe('mcp token', () => {
+  it('401 without the bearer token once mcp_token is set; works with it', async () => {
+    const s = setup();
+    s.store.setSettings(YOU, { mcp_token: 'secret-token-1234567890' });
+    const app = createApp({ store: s.store, db: s.db, clock: s.clock, extend: (a) => mountMcp(a, { store: s.store, db: s.db, clock: s.clock }) });
+    const server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: 0 });
+    await new Promise((r) => server.once('listening', r));
+    const url = new URL(`http://127.0.0.1:${(server.address() as AddressInfo).port}/mcp`);
+    try {
+      const bare = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body: '{}' });
+      expect(bare.status).toBe(401);
+      const wrong = new Client({ name: 'x', version: '1' });
+      await expect(wrong.connect(new StreamableHTTPClientTransport(url, { requestInit: { headers: { authorization: 'Bearer nope' } } }))).rejects.toThrow();
+      const ok = new Client({ name: 'chatgpt', version: '1' });
+      await ok.connect(new StreamableHTTPClientTransport(url, { requestInit: { headers: { authorization: 'Bearer secret-token-1234567890' } } }));
+      const r = (await ok.callTool({ name: 'list_projects', arguments: {} })) as Res;
+      expect(r.isError).not.toBe(true);
+      await ok.close();
     } finally {
       server.close();
     }

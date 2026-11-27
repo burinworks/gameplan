@@ -1,9 +1,10 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { StreamableHTTPTransport } from '@hono/mcp';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Hono } from 'hono';
 import type { Clock } from '../clock.js';
+import { getSettings } from '../domain/settings.js';
 import type { Store } from '../domain/store.js';
 import { INSTRUCTIONS, registerTools } from './tools.js';
 
@@ -14,6 +15,12 @@ interface Session {
 }
 
 const IDLE_MS = 6 * 60 * 60 * 1000;
+
+function tokenOk(header: string | undefined, token: string): boolean {
+  const got = Buffer.from(/^Bearer\s+(.+)$/i.exec(header ?? '')?.[1]?.trim() ?? '');
+  const want = Buffer.from(token);
+  return got.length === want.length && timingSafeEqual(got, want);
+}
 
 /** Mounts MCP Streamable HTTP at /mcp. One McpServer per session, so the actor is the client's own name. */
 export function mountMcp(app: Hono, deps: { store: Store; db: DatabaseSync; clock: Clock; version?: string }): () => void {
@@ -30,6 +37,11 @@ export function mountMcp(app: Hono, deps: { store: Store; db: DatabaseSync; cloc
   sweep.unref();
 
   app.all('/mcp', async (c) => {
+    const token = getSettings(deps.db).mcp_token;
+    if (token !== null && !tokenOk(c.req.header('authorization'), token)) {
+      c.header('www-authenticate', 'Bearer');
+      return c.json({ jsonrpc: '2.0', error: { code: -32001, message: 'Unauthorized — send Authorization: Bearer <mcp_token>' }, id: null }, 401);
+    }
     const sid = c.req.header('mcp-session-id');
     if (sid) {
       const s = sessions.get(sid);

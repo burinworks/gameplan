@@ -3,12 +3,13 @@ import { Hono, type Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { addDays, isDate, type Clock } from '../clock.js';
 import { exportJson, exportMarkdown } from '../export.js';
-import { home, listProjects, milestoneDetail, overview, projectTree, taskDetail, timeline, updates } from '../domain/queries.js';
+import { getDayPlan, home, inbox, listProjects, milestoneDetail, overview, projectTree, taskDetail, timeline, updates } from '../domain/queries.js';
 import { rescheduleTask } from '../domain/reschedule.js';
 import { revert } from '../domain/revert.js';
 import { search } from '../domain/search.js';
-import { getSettings } from '../domain/settings.js';
-import type { Store } from '../domain/store.js';
+import { getSettings, publicSettings } from '../domain/settings.js';
+import type { Store, TriageTarget } from '../domain/store.js';
+import { listTemplates } from '../domain/templates.js';
 import { GameplanError, PROJECT_STATUS, type Ctx, type EventRow, type ProjectStatus } from '../domain/types.js';
 
 export interface Backups {
@@ -82,7 +83,14 @@ export function createApp(deps: AppDeps): Hono {
     );
   });
   app.get('/api/search', (c) => c.json(search(db, c.req.query('q') ?? '', Number(c.req.query('limit') ?? 20))));
-  app.get('/api/settings', (c) => c.json(getSettings(db)));
+  app.get('/api/settings', (c) => c.json(publicSettings(getSettings(db))));
+  app.get('/api/day-plan/:date', (c) => {
+    const date = c.req.param('date');
+    if (!isDate(date)) throw new GameplanError('invalid', 'date must be YYYY-MM-DD');
+    return c.json(getDayPlan(db, date));
+  });
+  app.get('/api/inbox', (c) => c.json(inbox(db)));
+  app.get('/api/templates', (c) => c.json(listTemplates()));
   app.get('/api/agents', (c) => c.json(db.prepare('SELECT name, first_seen AS firstSeen, last_seen AS lastSeen, calls FROM agent_clients ORDER BY last_seen DESC').all()));
   app.get('/api/export', (c) => {
     const format = c.req.query('format') ?? 'json';
@@ -96,6 +104,9 @@ export function createApp(deps: AppDeps): Hono {
     if (format !== 'json') throw new GameplanError('invalid', 'format must be json or md');
     c.header('content-disposition', `attachment; filename="${name}.json"`);
     const data = exportJson(db);
+    data.tables.settings = (data.tables.settings as { key: string; value_json: string }[]).map((r) =>
+      r.key === 'mcp_token' && r.value_json !== 'null' ? { ...r, value_json: JSON.stringify('(set)') } : r,
+    );
     if (project) {
       const p = store.project(project);
       const ms = new Set((data.tables.milestones as { id: string; project_id: string }[]).filter((m) => m.project_id === p.id).map((m) => m.id));
@@ -127,6 +138,18 @@ export function createApp(deps: AppDeps): Hono {
     const b = await body<{ start: string; end: string; reason?: string; cascade?: boolean }>(c);
     return c.json(rescheduleTask(store, YOU, c.req.param('id'), b));
   });
+  app.post('/api/tasks/:id/review', async (c) => c.json(store.reviewTask(YOU, c.req.param('id'), await body(c))));
+  app.put('/api/tasks/:id/resume', async (c) => {
+    const b = await body<{ note?: string | null }>(c);
+    return c.json(store.setResumeNote(YOU, c.req.param('id'), b.note ?? null));
+  });
+  app.put('/api/day-plan/:date', async (c) => {
+    const b = await body<unknown>(c);
+    const items = Array.isArray(b) ? b : (b as { items?: unknown }).items;
+    return c.json(store.planDay(YOU, c.req.param('date'), items as never));
+  });
+  app.post('/api/inbox', async (c) => c.json(store.capture(YOU, (await body<{ text: string }>(c)).text), 201));
+  app.post('/api/inbox/:id/triage', async (c) => c.json(store.triageInbox(YOU, c.req.param('id'), await body<TriageTarget>(c))));
   app.post('/api/tasks/:id/todos', async (c) => {
     const b = await body<unknown>(c);
     const items = Array.isArray(b) ? b : (b as { todos?: unknown }).todos;
@@ -173,7 +196,7 @@ export function createApp(deps: AppDeps): Hono {
     return c.json({ ok: true });
   });
   app.post('/api/events/:id/revert', (c) => c.json(revert(store, YOU, c.req.param('id'))));
-  app.patch('/api/settings', async (c) => c.json(store.setSettings(YOU, await body(c))));
+  app.patch('/api/settings', async (c) => c.json(publicSettings(store.setSettings(YOU, await body(c)))));
   app.post('/api/backup', (c) => {
     if (!deps.backups) throw new GameplanError('invalid', 'backups are not configured');
     return c.json({ last: deps.backups.now() });

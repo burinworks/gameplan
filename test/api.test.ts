@@ -131,3 +131,61 @@ describe('http api', () => {
     await reader.cancel().catch(() => {});
   });
 });
+
+describe('http work features', () => {
+  it('review accept via POST /review', async () => {
+    const { call, store, taskId } = await seeded();
+    store.updateTask({ actor: 'ai:codex' }, taskId, { status: 'done' });
+    expect((await call('GET', '/api/home')).body.needsReview).toHaveLength(1);
+    const r = await call('POST', `/api/tasks/${taskId}/review`, { decision: 'accept' });
+    expect(r.status).toBe(200);
+    expect(r.body.status).toBe('done');
+    expect((await call('POST', `/api/tasks/${taskId}/review`, { decision: 'accept' })).status).toBe(400);
+  });
+
+  it('resume note and day plan show on home', async () => {
+    const { call, taskId } = await seeded();
+    expect((await call('PUT', `/api/tasks/${taskId}/resume`, { note: 'Next: wire auth' })).body.resumeNote).toBe('Next: wire auth');
+    const put = await call('PUT', '/api/day-plan/2026-11-26', { items: [{ taskId, when: 'morning' }] });
+    expect(put.status).toBe(200);
+    expect((await call('GET', '/api/day-plan/2026-11-26')).body).toEqual([expect.objectContaining({ taskId, when: 'morning' })]);
+    const h = (await call('GET', '/api/home')).body;
+    expect(h.plan).toEqual([expect.objectContaining({ n: 1, when: 'morning', resume: expect.objectContaining({ note: 'Next: wire auth' }) })]);
+  });
+
+  it('inbox capture → triage', async () => {
+    const { call, msId } = await seeded();
+    const c = await call('POST', '/api/inbox', { text: 'Book the room' });
+    expect(c.status).toBe(201);
+    expect((await call('GET', '/api/inbox')).body.count).toBe(1);
+    const t = await call('POST', `/api/inbox/${c.body.id}/triage`, { as: 'task', milestoneId: msId });
+    expect(t.body.created.entity).toBe('task');
+    expect((await call('GET', '/api/inbox')).body.count).toBe(0);
+    expect((await call('POST', `/api/inbox/${c.body.id}/triage`, { as: 'dismiss' })).status).toBe(409);
+  });
+
+  it('templates list and create from a template', async () => {
+    const { call } = api();
+    expect((await call('GET', '/api/templates')).body).toHaveLength(3);
+    const p = await call('POST', '/api/projects', { name: 'Launch it', template: 'launch', startDate: '2026-12-01' });
+    expect(p.status).toBe(201);
+    expect((await call('GET', `/api/projects/${p.body.slug}`)).body.milestones).toHaveLength(4);
+  });
+
+  it('settings never return the mcp token', async () => {
+    const { call, db } = api();
+    expect((await call('GET', '/api/settings')).body.mcp_token_set).toBe(false);
+    const r = await call('PATCH', '/api/settings', { mcp_token: 'secret-token-1234567890' });
+    expect(r.status).toBe(200);
+    expect(JSON.stringify(r.body)).not.toContain('secret-token');
+    const g = (await call('GET', '/api/settings')).body;
+    expect(g.mcp_token_set).toBe(true);
+    expect(JSON.stringify(g)).not.toContain('secret-token');
+    expect(JSON.stringify((await call('GET', '/api/updates')).body)).not.toContain('secret-token');
+    expect(JSON.stringify((await call('GET', '/api/export')).body)).not.toContain('secret-token');
+    expect((await call('PATCH', '/api/settings', { mcp_token: 'short' })).status).toBe(400);
+    expect((await call('PATCH', '/api/settings', { mcp_token: null })).status).toBe(200);
+    expect(JSON.parse((db.prepare("SELECT value_json FROM settings WHERE key = 'mcp_token'").get() as { value_json: string }).value_json)).toBeNull();
+  });
+});
+

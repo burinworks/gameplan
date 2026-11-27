@@ -453,8 +453,10 @@ export class Store {
       const after: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(p)) {
         if (same(cur[k as keyof Settings], v)) continue;
-        before[k] = cur[k as keyof Settings];
-        after[k] = v;
+        // The token itself never goes into the event log.
+        const shown = (x: unknown): unknown => (k === 'mcp_token' ? (x === null ? null : '(set)') : x);
+        before[k] = shown(cur[k as keyof Settings]);
+        after[k] = shown(v);
         this.q('INSERT INTO settings(key, value_json) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json').run(k, JSON.stringify(v));
       }
       if (Object.keys(after).length) this.record(c, { entity: 'settings', entityId: 'settings', projectId: null, label: 'Settings', kind: 'settings_changed', before, after });
