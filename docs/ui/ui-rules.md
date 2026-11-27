@@ -40,7 +40,8 @@ One primary (accent-filled) button per view, at most.
 
 **Toggle** — 34×20 track radius 10, 16px white knob, 2px inset, knob shadow `0 1px 2px rgba(0,0,0,.25)`. Off = `track`, on = accent. `role="switch"`.
 
-**Field** — 34px, radius 9, `sel` fill, no border; focus = 2px accent ring at 35% alpha. Placeholder `text3`, ends with an ellipsis ("Capture…").
+**Field** — 34px (30px compact). Two variants: `form` (default; `input` fill, 1px `field` border, radius 8) and `quiet` (`sel` fill, radius 9, for capture and search). Optional leading icon and a submit hint (the word and an Enter key cap) at the right edge while the value is non-empty. Focus = 2px accent ring drawn inside the box (never outside, so scroll containers cannot clip it; same for every focus-visible ring). Placeholder `text3`, ends with an ellipsis ("Capture to Inbox…").
+**DateField** — 30px field showing "Fri, Dec 4", − / + day steppers, click opens a month calendar (week start from Settings). **Select** — 30px button that opens a menu, optional swatch or diamond. **TokenField** — type, Enter makes a coloured token with ×, Backspace on empty removes the last. **EmptyState** — icon, one-line title, one-line hint, at most one primary button. **Page** — header (17px title, count, toolbar, actions) over a body under a 1px `grid` divider that fills the height.
 
 **Chip** — 22–24px, radius 6–7, padding 0/8–9, `sel` fill, 11.5–12px. Used for "when" hints, done-this-week items, executor and area labels.
 

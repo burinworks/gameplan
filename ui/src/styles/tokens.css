@@ -16,6 +16,7 @@
   --gp-bar: rgba(246, 246, 248, 0.6);
   --gp-scrim: rgba(20, 20, 30, 0.18);
   --gp-pill: #ffffff;
+  --gp-input: #ffffff;
 
   /* lines, tints, text */
   --gp-edge: rgba(0, 0, 0, 0.1);
@@ -65,6 +66,8 @@
   --gp-lh-title: 24px;
   --gp-fs-heading: 17px;
   --gp-lh-heading: 22px;
+  --gp-fs-sheet: 15px;
+  --gp-lh-sheet: 20px;
   --gp-fs-section: 13px;
   --gp-lh-section: 18px;
   --gp-fs-body: 13px;
@@ -112,6 +115,11 @@
   --gp-iconChip: 11px;
   --gp-swatch: 8px;
   --gp-diamond: 10px;
+  --gp-diamondSm: 7px;
+  --gp-dot: 6px;
+  --gp-keycap: 18px;
+  --gp-stepW: 26px;
+  --gp-dayCell: 28px;
   --gp-sidebar: 232px;
   --gp-paneW: 344px;
   --gp-sheetW: 560px;
@@ -138,7 +146,8 @@
   --gp-shadow-knob: 0 1px 2px rgba(0, 0, 0, 0.25);
   --gp-fieldRing: inset 0 0 0 1px var(--gp-field);
   --gp-riskRing: 0 0 0 1.5px var(--gp-risk);
-  --gp-focus: 0 0 0 2px var(--gp-card), 0 0 0 4px color-mix(in srgb, var(--gp-accent) 35%, transparent);
+  /* Drawn inside the element so scroll containers and overflow:hidden never clip it. */
+  --gp-focus: inset 0 0 0 2px color-mix(in srgb, var(--gp-accent) 55%, transparent);
   --gp-diamondHalo: 0 0 0 2px var(--gp-panelSolid);
 
   /* blur */
@@ -180,6 +189,7 @@
   --gp-bar: rgba(30, 30, 34, 0.6);
   --gp-scrim: rgba(0, 0, 0, 0.35);
   --gp-pill: #3a3a3f;
+  --gp-input: rgba(255, 255, 255, 0.06);
 
   --gp-edge: rgba(255, 255, 255, 0.1);
   --gp-grid: rgba(255, 255, 255, 0.07);

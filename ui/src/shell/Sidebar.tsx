@@ -11,10 +11,10 @@ import { Menu, type MenuItem } from '../ui/Menu';
 import { Swatch } from '../ui/Swatch';
 import './sidebar.css';
 
-function NavLink({ to, icon, label, count, active }: { to: string; icon: IconName; label: string; count?: number; active: boolean }) {
+function NavLink({ to, icon, label, count, active, small }: { to: string; icon: IconName; label: string; count?: number; active: boolean; small?: boolean }) {
   return (
-    <Link href={to} className={`gp-nav${active ? ' is-current' : ''}`} aria-current={active ? 'page' : undefined}>
-      <Icon name={icon} />
+    <Link href={to} className={`gp-nav${active ? ' is-current' : ''}${small ? ' gp-nav--small' : ''}`} aria-current={active ? 'page' : undefined}>
+      <Icon name={icon} size={small ? 14 : 16} />
       <span className="gp-nav__label">{label}</span>
       {count !== undefined && <span className="gp-nav__count num">{count}</span>}
     </Link>
@@ -72,7 +72,12 @@ export function Sidebar({ onSearch, onNewProject }: { onSearch: () => void; onNe
               {isCurrent && (
                 <ul className="gp-milestones">
                   {p.milestones.map((m) => (
-                    <li key={m.id} className={`gp-milestone${m.status === 'done' ? ' is-done' : ''}`}>
+                    <li
+                      key={m.id}
+                      className={`gp-milestone${m.status === 'done' ? ' is-done' : ''}`}
+                      style={{ ['--ms' as string]: p.color ?? 'var(--gp-text3)' }}
+                    >
+                      <span className="gp-milestone__mark" aria-hidden="true" />
                       <span className="gp-milestone__name" dir="auto" title={m.name}>
                         {m.name}
                       </span>
@@ -86,7 +91,7 @@ export function Sidebar({ onSearch, onNewProject }: { onSearch: () => void; onNe
         })}
       </div>
 
-      <NavLink to={paths.archive} icon="archive" label="Paused & archived" count={overview.data?.count} active={loc === paths.archive} />
+      <NavLink to={paths.archive} icon="archive" label="Paused & archived" count={overview.data?.count} active={loc === paths.archive} small />
       <div className="gp-sidebar__spacer" />
       <NavLink to={paths.settings} icon="settings" label="Settings" active={loc === paths.settings} />
 

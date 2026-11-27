@@ -13,6 +13,7 @@
 | `display` | 22 / 28 | 600 | -0.01em | Home date header |
 | `title` | 19 / 24 | 600 | -0.01em | Task pane title |
 | `heading` | 17 / 22 | 600 | -0.01em | Project title, Settings, sheets |
+| `sheet` | 15 / 20 | 600 | -0.01em | Sheet title |
 | `section` | 13 / 18 | 600 | 0 | Panel headings |
 | `body` | 13 / 18 | 400 · 500 | 0 | Rows, fields, buttons (500) |
 | `small` | 12.5 / 16 | 400 | 0 | Secondary nav |
@@ -38,6 +39,7 @@ No other sizes.
 | `bar` (menu bar strip) | `rgba(246,246,248,.60)` | `rgba(30,30,34,.60)` |
 | `scrim` | `rgba(20,20,30,.18)` | `rgba(0,0,0,.35)` |
 | `pill` | `#ffffff` | `#3a3a3f` |
+| `input` (form field fill) | `#ffffff` | `rgba(255,255,255,.06)` |
 
 ## Colour — lines, tints, text
 | Token | Light | Dark |
@@ -89,6 +91,11 @@ Assigned in order on project creation, user-changeable. Bar tint = colour at 16%
 | `icon` | 16 / 14 / 11 | Nav / inline / chip check |
 | `swatch` | 8 | Project swatch |
 | `diamond` | 10 | Milestone |
+| `diamondSm` | 7 | Sidebar milestone marker, select option marker |
+| `dot` | 6 | Status dot in chips, risk dot |
+| `keycap` | 18 | Key cap in the field submit hint |
+| `stepW` | 26 | Date stepper button width |
+| `dayCell` | 28 | Calendar day button |
 | `sidebar` | 232 | Sidebar width |
 | `pane` | 344 | Task pane width |
 | `sheetW` | 560 | Sheet width |
@@ -110,7 +117,7 @@ Icons: 24-grid line icons, stroke 1.8 (2 at ≤14px), round caps and joins, `cur
 | `knob` | `0 1px 2px rgba(0,0,0,.25)` |
 | `fieldRing` | `inset 0 0 0 1px var(--gp-field)` |
 | `riskRing` | `0 0 0 1.5px var(--gp-risk)` |
-| `focus` | `0 0 0 2px var(--gp-card), 0 0 0 4px rgba(47,107,240,.35)` |
+| `focus` | `inset 0 0 0 2px rgba(47,107,240,.55)` (inside the element, never clipped by scroll containers) |
 | `diamondHalo` | `0 0 0 2px var(--gp-panelSolid)` |
 
 ## Blur

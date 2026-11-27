@@ -26,6 +26,14 @@ export function fmtDate(d: string, today: string): string {
   return p.y === parse(today).y ? base : `${base}, ${p.y}`;
 }
 
+/** "Fri, Dec 4"; adds the year when it differs from today's ("Fri, Jan 15, 2027"). */
+export function fmtDayDate(d: string, today: string): string {
+  const p = parse(d);
+  const wd = new Date(Date.UTC(p.y, p.m, p.d)).getUTCDay();
+  const base = `${WEEKDAYS[wd]!.slice(0, 3)}, ${MONTHS[p.m]} ${p.d}`;
+  return p.y === parse(today).y ? base : `${base}, ${p.y}`;
+}
+
 export function fmtHeaderDate(d: string): string {
   const p = parse(d);
   const wd = new Date(Date.UTC(p.y, p.m, p.d)).getUTCDay();

@@ -1,6 +1,7 @@
 export type IconName =
   | 'home' | 'search' | 'inbox' | 'plus' | 'archive' | 'settings' | 'more' | 'check' | 'chevron'
-  | 'link' | 'commit' | 'pr' | 'file' | 'ticket' | 'star' | 'close' | 'minus';
+  | 'link' | 'commit' | 'pr' | 'file' | 'ticket' | 'star' | 'close' | 'minus'
+  | 'enter' | 'chevronDown' | 'chevronLeft' | 'calendar';
 
 const PATHS: Record<IconName, string> = {
   home: 'M4 11l8-7 8 7M6 9.5V20h12V9.5',
@@ -20,10 +21,14 @@ const PATHS: Record<IconName, string> = {
   star: 'M12 4l2.4 5 5.6.7-4.1 3.8 1.1 5.5L12 16.3 7 19l1.1-5.5L4 9.7 9.6 9z',
   close: 'M6 6l12 12M18 6L6 18',
   minus: 'M6 12h12',
+  enter: 'M19 6v6a2 2 0 01-2 2H5M9 10l-4 4 4 4',
+  chevronDown: 'M6 9l6 6 6-6',
+  chevronLeft: 'M15 6l-6 6 6 6',
+  calendar: 'M5 6h14v14H5zM5 10h14M9 4v4M15 4v4',
 };
 
 /** 24-grid line icon, currentColor, decorative (aria-hidden). */
-export function Icon({ name, size = 16 }: { name: IconName; size?: 11 | 14 | 16 }) {
+export function Icon({ name, size = 16 }: { name: IconName; size?: 10 | 11 | 12 | 14 | 16 | 20 }) {
   return (
     <svg
       className="gp-icon"

@@ -76,6 +76,8 @@ describe('primitives', () => {
     await userEvent.tab();
     expect(screen.getByRole('button', { name: 'Archive' })).toHaveFocus();
     await userEvent.tab();
+    expect(screen.getByRole('button', { name: 'Close' })).toHaveFocus();
+    await userEvent.tab();
     expect(screen.getByLabelText('name')).toHaveFocus();
     await userEvent.keyboard('{Escape}');
     expect(onClose).toHaveBeenCalled();

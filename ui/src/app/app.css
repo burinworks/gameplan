@@ -23,11 +23,13 @@
 .gp-main {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
-  padding: var(--gp-s24) var(--gp-s32);
 }
 .gp-errorline {
-  margin-bottom: var(--gp-s12);
+  flex: none;
+  padding: var(--gp-s8) var(--gp-s24) 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;

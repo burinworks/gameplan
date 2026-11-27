@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Redirect, Route, Switch, useLocation, useRoute, useSearch } from 'wouter';
 import { setErrorLine, useErrorLine, useSettings } from '../api/hooks';
 import { undoLast } from '../api/live';
@@ -16,6 +16,7 @@ import { Sidebar } from '../shell/Sidebar';
 import { applyTheme } from '../theme';
 import '../ui/primitives.css';
 import './app.css';
+import { AppActionsContext } from './appActions';
 import { isTab, parsePane, paths, type ProjectTab } from './routes';
 import { useShortcut } from './shortcuts';
 
@@ -51,6 +52,8 @@ export function App() {
   const closePane = useCloseTask();
   const { openNewTask } = usePaneNav();
 
+  const actions = useMemo(() => ({ openNewProject: () => setNewProject(true), openSearch: () => setSearching(true) }), []);
+
   const s = settings.data;
   useEffect(() => {
     applyTheme({ appearance: (s?.appearance as 'system' | 'light' | 'dark' | undefined) ?? 'system', accent: s?.accent ?? '#2F6BF0' });
@@ -75,6 +78,7 @@ export function App() {
   });
 
   return (
+    <AppActionsContext.Provider value={actions}>
     <div className="gp-window">
       <EngineDown />
       <div className="gp-app">
@@ -108,5 +112,6 @@ export function App() {
       {searching && <SearchPalette onClose={() => setSearching(false)} />}
       {newProject && <NewProject onClose={() => setNewProject(false)} />}
     </div>
+    </AppActionsContext.Provider>
   );
 }

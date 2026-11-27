@@ -79,7 +79,7 @@ export function Home() {
           {fmtHeaderDate(h.today)}
         </h1>
         <div className="home__capture">
-          <Field label="Capture" placeholder="Capture…" value={text} onChange={setText} onEnter={submit} inputRef={inputRef} />
+          <Field label="Capture" variant="quiet" icon="inbox" submitHint="Add" placeholder="Capture to Inbox…" value={text} onChange={setText} onEnter={submit} inputRef={inputRef} />
         </div>
       </header>
 

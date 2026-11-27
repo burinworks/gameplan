@@ -53,7 +53,7 @@ describe('Home', () => {
   it('captures on Enter, clears, and keeps focus', async () => {
     const f = mockFetch(routes());
     wrap(<Home />);
-    const input = await screen.findByPlaceholderText('Capture…');
+    const input = await screen.findByPlaceholderText('Capture to Inbox…');
     input.focus();
     fireEvent.change(input, { target: { value: 'call the bank' } });
     fireEvent.keyDown(input, { key: 'Enter' });

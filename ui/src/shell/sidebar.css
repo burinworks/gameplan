@@ -83,12 +83,30 @@ html[data-shell='tauri'] .gp-sidebar {
 .gp-milestone {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--gp-s8);
   height: var(--gp-rowSm);
   padding: 0 var(--gp-s10);
   font-size: var(--gp-fs-small);
   color: var(--gp-text2);
+}
+.gp-nav--small {
+  height: var(--gp-rowSm);
+  margin-top: var(--gp-s4);
+  font-size: var(--gp-fs-small);
+}
+.gp-milestone__mark {
+  flex: none;
+  width: var(--gp-diamondSm);
+  height: var(--gp-diamondSm);
+  border-radius: var(--gp-r2);
+  background: var(--ms);
+  transform: rotate(45deg);
+}
+.gp-milestone.is-done .gp-milestone__mark {
+  background: var(--gp-track);
+}
+.gp-milestone__name {
+  flex: 1;
 }
 .gp-milestone.is-done {
   color: var(--gp-text3);
