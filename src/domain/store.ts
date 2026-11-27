@@ -177,6 +177,11 @@ function labelsOf(v: unknown): string[] {
   return [...new Set((v as string[]).map((x) => x.trim()).filter(Boolean))];
 }
 
+export function checkResumeNote(note: string): void {
+  if (/[\r\n]/.test(note)) throw new GameplanError('invalid', 'a resume note is one line — no line breaks');
+  if (note.length > 200) throw new GameplanError('invalid', `a resume note is at most 200 characters (got ${note.length})`);
+}
+
 export function checkSpan(start: string | null, end: string | null): void {
   if ((start === null) !== (end === null)) throw new GameplanError('invalid', 'start and end must be given together (or both null)');
   if (start !== null && end !== null && start > end) throw new GameplanError('invalid', `start (${start}) must be on or before end (${end})`);
@@ -270,6 +275,11 @@ export class Store {
 
   today(): string {
     return this.clock.today(this.settings().time_zone);
+  }
+
+  /** Agents never reach `done` while agents_need_review is on: they land on `review`. */
+  routeStatus(c: Ctx, next: TaskStatus): TaskStatus {
+    return next === 'done' && isAgent(c.actor) && this.settings().agents_need_review ? 'review' : next;
   }
 
   q(sql: string): StatementSync {
@@ -632,6 +642,7 @@ export class Store {
       const priority = input.priority === undefined ? p.defaultPriority : oneOf('priority', input.priority, PRIORITY);
       const executor = input.executor === undefined ? p.defaultExecutor : oneOf('executor', input.executor, EXECUTOR);
       const labels = input.labels === undefined ? [] : labelsOf(input.labels);
+      const status = input.status === undefined ? 'todo' : this.routeStatus(c, oneOf('status', input.status, TASK_STATUS));
       const id = newId('tk');
       const now = this.clock.now();
       this.q(
@@ -644,7 +655,7 @@ export class Store {
         input.description ?? null,
         start,
         end,
-        'todo',
+        status,
         priority,
         executor,
         input.important ? 1 : 0,
@@ -653,7 +664,7 @@ export class Store {
         now,
         now,
       );
-      this.record(c, { entity: 'task', entityId: id, projectId: p.id, label: title, kind: 'created', after: { title, milestoneId: m.id, start, end, status: 'todo' } });
+      this.record(c, { entity: 'task', entityId: id, projectId: p.id, label: title, kind: 'created', after: { title, milestoneId: m.id, start, end, status } });
       if (input.todos?.length) this.addTodos(c, id, input.todos);
       for (const dep of input.after ?? []) this.addDependency(c, id, { taskId: dep });
       for (const l of input.links ?? []) this.attach(c, id, { role: 'context', url: l.url, title: l.title, kind: l.kind });
@@ -683,7 +694,7 @@ export class Store {
         f.start = start;
         f.end = end;
       }
-      if (patch.status !== undefined) f.status = oneOf('status', patch.status, TASK_STATUS);
+      if (patch.status !== undefined) f.status = this.routeStatus(c, oneOf('status', patch.status, TASK_STATUS));
       if (patch.priority !== undefined) f.priority = oneOf('priority', patch.priority, PRIORITY);
       if (patch.executor !== undefined) f.executor = oneOf('executor', patch.executor, EXECUTOR);
       if (patch.important !== undefined) f.important = Boolean(patch.important);
@@ -743,6 +754,66 @@ export class Store {
     }
     if (Object.keys(after).length) out.push(this.record(c, { entity: 'task', entityId: id, projectId, label, kind: 'updated', before, after }));
     return out;
+  }
+
+  // ---------- review ----------
+
+  /** You accept (→ done) or send back (→ doing, note becomes the resume note) a task in review. */
+  reviewTask(ctx: Ctx, id: string, input: { decision: 'accept' | 'send_back'; note?: string | null }): Task {
+    if (isAgent(ctx.actor)) throw new GameplanError('forbidden', 'only you can review AI work — an agent may not accept or send back a task');
+    const decision = oneOf('decision', input.decision, ['accept', 'send_back'] as const);
+    const note = typeof input.note === 'string' && input.note.trim() ? input.note.trim() : null;
+    if (note !== null) checkResumeNote(note);
+    return this.write(ctx, (c) => {
+      const t = this.task(id);
+      if (t.status !== 'review') throw new GameplanError('invalid', `task "${t.title}" is ${t.status}, not waiting for review`);
+      const next: TaskStatus = decision === 'accept' ? 'done' : 'doing';
+      this.quietly(() => this.patchTask(c, id, { status: next }));
+      this.record(c, {
+        entity: 'task',
+        entityId: id,
+        projectId: this.projectIdOfTask(id),
+        label: t.title,
+        kind: decision === 'accept' ? 'review_accepted' : 'review_sent_back',
+        before: { status: 'review' },
+        after: { status: next },
+        reason: decision === 'send_back' ? note : (ctx.reason ?? null),
+      });
+      if (decision === 'send_back' && note !== null) this.applyResumeNote(c, id, note);
+      return this.task(id);
+    });
+  }
+
+  // ---------- resume notes ----------
+
+  /** One line on where work stopped. `''`/null clears it. */
+  setResumeNote(ctx: Ctx, taskId: string, note: string | null): Task {
+    if (note !== null && typeof note !== 'string') throw new GameplanError('invalid', 'note must be a string');
+    const n = note === null ? null : note.trim() || null;
+    if (n !== null) checkResumeNote(n);
+    return this.write(ctx, (c) => {
+      this.task(taskId);
+      this.applyResumeNote(c, taskId, n);
+      return this.task(taskId);
+    });
+  }
+
+  /** Low-level: sets (or clears) the note, stamps at/by, records `resume_noted`. */
+  applyResumeNote(c: WCtx, taskId: string, note: string | null, stamp?: { at: string | null; by: string | null }): void {
+    const t = this.task(taskId, { archived: true });
+    if (t.resumeNote === note && !stamp) return;
+    const at = stamp ? stamp.at : note === null ? null : this.clock.now();
+    const by = stamp ? stamp.by : note === null ? null : c.actor;
+    this.q('UPDATE tasks SET resume_note = ?, resume_at = ?, resume_by = ? WHERE id = ?').run(note, at, by, taskId);
+    this.record(c, {
+      entity: 'task',
+      entityId: taskId,
+      projectId: this.projectIdOfTask(taskId),
+      label: t.title,
+      kind: 'resume_noted',
+      before: { note: t.resumeNote, at: t.resumeAt, by: t.resumeBy },
+      after: { note, at, by },
+    });
   }
 
   // ---------- to-dos ----------
@@ -820,9 +891,9 @@ export class Store {
       const t = this.task(td.taskId);
       const todos = this.todosOf(t.id);
       let next: TaskStatus | null = null;
-      if (done && todos.every((x) => x.done) && t.status !== 'done' && t.status !== 'cancelled') next = 'done';
+      if (done && todos.every((x) => x.done) && t.status !== 'done' && t.status !== 'cancelled' && t.status !== 'review') next = this.routeStatus(c, 'done');
       else if (done && t.status === 'todo') next = 'doing';
-      else if (!done && t.status === 'done') next = 'doing';
+      else if (!done && (t.status === 'done' || t.status === 'review')) next = 'doing';
       if (next) this.patchTask(c, t.id, { status: next });
       return this.todo(id);
     });

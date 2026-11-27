@@ -1,5 +1,5 @@
 import type { Store, WCtx } from './store.js';
-import { GameplanError, toEvent, type ArchivableEntity, type Ctx, type EventRow, type ReorderEntity } from './types.js';
+import { GameplanError, toEvent, type ArchivableEntity, type Ctx, type EventRow, type ReorderEntity, type TaskStatus } from './types.js';
 
 const NOT_REVERTIBLE = new Set(['settings_changed', 'reverted']);
 
@@ -54,13 +54,28 @@ function undo(store: Store, c: WCtx, ev: EventRow): void {
     case 'updated': {
       if ('areas' in after) throw new GameplanError('invalid', 'area changes cannot be reverted — edit the areas in project settings');
       expectAfter(store, ev, Object.keys(after));
-      if (ev.entity === 'task') store.patchTask(c, ev.entityId, before);
+      if (ev.entity === 'task') {
+        const back = { ...before };
+        if (back.status !== undefined) back.status = store.routeStatus(c, back.status as TaskStatus);
+        store.patchTask(c, ev.entityId, back);
+      }
       else if (ev.entity === 'milestone') store.patchMilestone(c, ev.entityId, before);
       else if (ev.entity === 'project') store.patchProject(c, ev.entityId, before);
       else if (ev.entity === 'todo') {
         if ('title' in before) store.q('UPDATE todos SET title = ? WHERE id = ?').run(before.title as string, ev.entityId);
         if ('after' in before) store.q('UPDATE todos SET after_json = ? WHERE id = ?').run(JSON.stringify(before.after), ev.entityId);
       } else throw new GameplanError('invalid', `cannot revert ${ev.kind} on ${ev.entity}`);
+      return;
+    }
+    case 'review_accepted':
+    case 'review_sent_back':
+      expectAfter(store, ev, ['status']);
+      store.patchTask(c, ev.entityId, { status: 'review' });
+      return;
+    case 'resume_noted': {
+      const snap = expectAfter(store, ev, []);
+      if (!same(snap.resumeNote, after.note)) stale(ev, '(resume note)');
+      store.applyResumeNote(c, ev.entityId, (before.note as string | null) ?? null, { at: (before.at as string | null) ?? null, by: (before.by as string | null) ?? null });
       return;
     }
     case 'todo_done':

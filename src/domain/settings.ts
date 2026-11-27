@@ -13,6 +13,7 @@ export const DEFAULTS = {
   open_at_login: true,
   menu_bar_icon: true,
   agents_require_reason: true,
+  agents_need_review: true,
   agents_can_archive: false,
   agents_can_create_projects: true,
 };

@@ -1,7 +1,7 @@
 import { diffDays } from '../clock.js';
 import type { TaskStatus } from './types.js';
 
-export type Health = 'done' | 'unscheduled' | 'late' | 'conflict' | 'on_track';
+export type Health = 'done' | 'review' | 'unscheduled' | 'late' | 'conflict' | 'on_track';
 
 export interface DepInfo {
   title: string;
@@ -27,6 +27,7 @@ export function taskHealth(
   today: string,
 ): { health: Health; reasons: string[]; daysLate?: number } {
   if (task.status === 'done' || task.status === 'cancelled') return { health: 'done', reasons: [] };
+  if (task.status === 'review') return { health: 'review', reasons: [] };
   if (task.start === null || task.end === null) return { health: 'unscheduled', reasons: [] };
   if (task.end < today) {
     const n = diffDays(task.end, today);

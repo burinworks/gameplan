@@ -196,6 +196,8 @@ export interface TaskInput {
   executor?: Executor;
   important?: boolean;
   labels?: string[];
+  /** An agent asking for `done` lands on `review` while agents_need_review is on. */
+  status?: TaskStatus;
 }
 
 export interface TodoInput {
