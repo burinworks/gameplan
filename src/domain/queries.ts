@@ -98,6 +98,7 @@ export interface TreeTask extends Task {
   context: Attachment[];
   deliverables: Attachment[];
   deliverableCount: number;
+  resume: Resume | null;
 }
 
 export interface TreeMilestone extends Milestone {
@@ -114,6 +115,15 @@ export interface ProjectTree {
   project: Omit<Project, 'areas'> & { areas: (ReturnType<typeof toArea> & { tasks: number })[]; progress: Progress };
   milestones: TreeMilestone[];
 }
+
+export interface Resume {
+  note: string;
+  at: string | null;
+  by: string | null;
+}
+
+export const resumeOf = (t: { resumeNote: string | null; resumeAt: string | null; resumeBy: string | null }): Resume | null =>
+  t.resumeNote ? { note: t.resumeNote, at: t.resumeAt, by: t.resumeBy } : null;
 
 const isOpen = (s: string): boolean => s === 'todo' || s === 'doing';
 
@@ -169,6 +179,7 @@ function buildTree(db: DatabaseSync, pr: Row, today: string): ProjectTree {
       context: ctx,
       deliverables: del,
       deliverableCount: del.length,
+      resume: resumeOf(t),
     });
   }
 

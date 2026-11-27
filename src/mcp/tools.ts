@@ -156,6 +156,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       project: t.project.slug,
       milestone: t.milestone,
       labels: t.labels,
+      resume: t.resume,
       todos: t.todos.map((d) => ({ id: d.id, title: d.title, state: d.state })),
       context: t.context.map((x) => ({ id: x.id, kind: x.kind, title: x.title, url: x.url })),
       deliverables: t.deliverables.map((x) => ({ id: x.id, kind: x.kind, ref: x.ref, title: x.title, url: x.url, state: x.state })),
