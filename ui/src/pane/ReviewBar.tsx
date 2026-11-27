@@ -10,9 +10,15 @@ export function ReviewBar({ taskId, by, at }: { taskId: string; by: string; at: 
   const sendBack = () => {
     const n = note.trim();
     if (!n) return;
-    review.mutate({ id: taskId, decision: 'send_back', note: n });
-    setSending(false);
-    setNote('');
+    review.mutate(
+      { id: taskId, decision: 'send_back', note: n },
+      {
+        onSuccess: () => {
+          setSending(false);
+          setNote('');
+        },
+      },
+    );
   };
   return (
     <section className="gp-review" aria-label="Review">

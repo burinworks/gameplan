@@ -19,9 +19,13 @@ const EXECUTORS: { value: Executor; label: string }[] = [
 ];
 
 /** Date text field: saves valid `YYYY-MM-DD` on blur/Enter; invalid shows the risk ring and sends nothing. */
-function DateField({ label, value, onSave }: { label: string; value: string | null; onSave: (v: string) => boolean }) {
+function DateField({ label, value, onSave }: { label: string; value: string | null; onSave: (v: string) => Promise<unknown> | null }) {
   const [rejected, setRejected] = useState(false);
-  const d = useDraft(value ?? '', (v) => setRejected(!onSave(v.trim())));
+  const d = useDraft(value ?? '', (v) => {
+    const p = onSave(v.trim());
+    setRejected(p === null);
+    return p ?? undefined;
+  });
   const bad = rejected || (d.value !== '' && !isDate(d.value.trim()) && d.value !== (value ?? ''));
   return (
     <input
@@ -70,10 +74,8 @@ function TaskBody({ task, slug, onArchived }: { task: TaskDetail; slug: string; 
   const archive = useArchive();
   const [link, setLink] = useState('');
 
-  const title = useDraft(task.title, (v) => {
-    if (v.trim()) update.mutate({ id: task.id, patch: { title: v.trim() } });
-  });
-  const desc = useDraft(task.description ?? '', (v) => update.mutate({ id: task.id, patch: { description: v.trim() ? v : null } }));
+  const title = useDraft(task.title, (v) => (v.trim() ? update.mutateAsync({ id: task.id, patch: { title: v.trim() } }) : undefined));
+  const desc = useDraft(task.description ?? '', (v) => update.mutateAsync({ id: task.id, patch: { description: v.trim() ? v : null } }));
 
   const { start, end } = task;
   const shift = (which: 'both' | 'end', n: number) => {
@@ -84,13 +86,12 @@ function TaskBody({ task, slug, onArchived }: { task: TaskDetail; slug: string; 
     resched.mutate({ id: task.id, start: s, end: e });
   };
   const step = (dir: 1 | -1, e: MouseEvent) => shift(e.shiftKey ? 'end' : 'both', dir);
-  const setDate = (which: 'start' | 'end') => (v: string): boolean => {
-    if (!isDate(v)) return false;
+  const setDate = (which: 'start' | 'end') => (v: string): Promise<unknown> | null => {
+    if (!isDate(v)) return null;
     const s = which === 'start' ? v : (start ?? v);
     const e = which === 'end' ? v : (end ?? v);
-    if (e < s) return false;
-    resched.mutate({ id: task.id, start: s, end: e });
-    return true;
+    if (e < s) return null;
+    return resched.mutateAsync({ id: task.id, start: s, end: e });
   };
 
   const allTasks = tree?.milestones.flatMap((m) => m.tasks) ?? [];
@@ -105,8 +106,7 @@ function TaskBody({ task, slug, onArchived }: { task: TaskDetail; slug: string; 
   const addLink = () => {
     const url = link.trim();
     if (!url) return;
-    attach.mutate({ taskId: task.id, role: 'context', url });
-    setLink('');
+    attach.mutate({ taskId: task.id, role: 'context', url }, { onSuccess: () => setLink('') });
   };
 
   return (
@@ -117,7 +117,31 @@ function TaskBody({ task, slug, onArchived }: { task: TaskDetail; slug: string; 
         </span>
         <Button variant="icon" icon="close" label="Close" onClick={close} />
       </header>
-      <input className="gp-tp__title" dir="auto" aria-label="Title" value={title.value} onChange={(e) => title.set(e.target.value)} {...title.bind} />
+      <textarea
+        className="gp-tp__title"
+        dir="auto"
+        aria-label="Title"
+        rows={1}
+        value={title.value}
+        ref={(el) => {
+          if (el) {
+            el.style.height = 'auto';
+            el.style.height = `${el.scrollHeight}px`;
+          }
+        }}
+        onChange={(e) => title.set(e.target.value.replace(/[\r\n]+/g, ' '))}
+        onFocus={title.bind.onFocus}
+        onBlur={title.bind.onBlur}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            if (!e.shiftKey) {
+              title.bind.onKeyDown(e);
+              (e.target as HTMLTextAreaElement).blur();
+            }
+          } else if (e.key === 'Escape') title.bind.onKeyDown(e);
+        }}
+      />
 
       <div className="gp-tp__chips">
         <Chip tone={inReview ? 'review' : task.health === 'late' || task.health === 'conflict' ? 'risk' : task.health === 'done' ? 'ok' : 'neutral'}>{statusLabel(task.status)}</Chip>
@@ -151,7 +175,7 @@ function TaskBody({ task, slug, onArchived }: { task: TaskDetail; slug: string; 
         <Stepper label="Start" onStep={step}>
           <DateField label="Start date" value={start} onSave={setDate('start')} />
         </Stepper>
-        <Stepper label="End" onStep={(dir) => shift('end', dir)}>
+        <Stepper label="End" onStep={step}>
           <DateField label="End date" value={end} onSave={setDate('end')} />
         </Stepper>
         <div className="gp-tp__row">

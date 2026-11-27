@@ -11,7 +11,7 @@ export const RESUME_COUNTER_AT = 180;
 
 export function ResumeBox({ taskId, resume }: { taskId: string; resume: Resume | null }) {
   const setResume = useSetResume();
-  const d = useDraft(resume?.note ?? '', (v) => setResume.mutate({ id: taskId, note: v.trim() || null }));
+  const d = useDraft(resume?.note ?? '', (v) => setResume.mutateAsync({ id: taskId, note: v.trim() || null }));
   const [editing, setEditing] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => {

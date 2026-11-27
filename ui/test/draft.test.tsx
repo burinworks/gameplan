@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { useDraft } from '../src/lib/draft';
 
@@ -73,5 +73,15 @@ describe('useDraft', () => {
     fireEvent.blur(input);
     expect(save).toHaveBeenCalledTimes(1);
     expect(input.value).toBe('abc');
+  });
+
+  it('restores the server value when an async save rejects', async () => {
+    const save = vi.fn(() => Promise.reject(new Error('refused')));
+    render(<Field server="one" save={save} />);
+    const input = screen.getByLabelText('f') as HTMLInputElement;
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: 'abc' } });
+    fireEvent.blur(input);
+    await waitFor(() => expect(input.value).toBe('one'));
   });
 });

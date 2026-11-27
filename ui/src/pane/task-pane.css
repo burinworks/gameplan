@@ -35,10 +35,13 @@
   background: transparent;
   color: var(--gp-text);
   font-family: inherit;
+  display: block;
+  resize: none;
+  overflow: hidden;
 }
 .gp-tp__title:focus {
   outline: none;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gp-accent) 35%, transparent);
+  box-shadow: var(--gp-focus);
 }
 .gp-tp__chips {
   display: flex;
@@ -169,11 +172,11 @@
 }
 .gp-pane__input:focus {
   outline: none;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gp-accent) 35%, transparent);
+  box-shadow: var(--gp-focus);
 }
 .gp-pane__input.is-invalid,
 .gp-pane__input.is-invalid:focus {
-  box-shadow: 0 0 0 2px var(--gp-risk);
+  box-shadow: var(--gp-riskRing);
 }
 .gp-pane__date {
   width: 100%;
@@ -215,7 +218,7 @@ textarea.gp-pane__input {
 }
 .gp-tp__key {
   flex: none;
-  width: 56px;
+  width: calc(var(--gp-s28) * 2);
   font-size: var(--gp-fs-meta);
   color: var(--gp-text2);
 }

@@ -19,8 +19,7 @@ export function Todos({ taskId, todos, tone = 'ok' }: { taskId: string; todos: T
   const addOne = () => {
     const title = text.trim();
     if (!title) return;
-    add.mutate({ taskId, todos: [{ title }] });
-    setText('');
+    add.mutate({ taskId, todos: [{ title }] }, { onSuccess: () => setText('') });
   };
   const over = (id: string) => {
     if (!drag || drag === id) return;
