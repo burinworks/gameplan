@@ -1,0 +1,7 @@
+.pa {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gp-s14);
+  max-width: calc(var(--gp-sheetW) + var(--gp-sidebar));
+  margin: 0 auto;
+}

@@ -289,6 +289,7 @@ export function overview(db: DatabaseSync, today: string) {
   const paused = (db.prepare("SELECT * FROM projects WHERE archived_at IS NULL AND status = 'paused' ORDER BY status_changed_at DESC, rowid").all() as Row[]).map((r) => {
     const tree = buildTree(db, r, today);
     return {
+      id: tree.project.id,
       slug: tree.project.slug,
       name: tree.project.name,
       color: tree.project.color,
@@ -309,6 +310,7 @@ export function overview(db: DatabaseSync, today: string) {
       )
       .all() as Row[]
   ).map((r) => ({
+    id: String(r.id),
     slug: String(r.slug),
     name: String(r.name),
     color: (r.color as string | null) ?? null,
