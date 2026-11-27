@@ -1,11 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { useLocation } from 'wouter';
-import { useArchive, useConfigureProject, useProject } from '../../api/hooks';
+import { useConfigureProject, useProject } from '../../api/hooks';
 import type { ConfigureProjectBody } from '../../api/hooks';
 import type { Executor, Priority } from '../../api/types';
-import { paths } from '../../app/routes';
-import { Button, Chip, Field, Panel, Segmented, Sheet, Swatch } from '../../ui';
+import { Button, Chip, Field, Panel, Segmented, Swatch } from '../../ui';
 import { ColorPicker } from '../../sheets/NewProject';
+import { ArchiveProjectSheet } from './ArchiveProjectSheet';
 import './project-settings.css';
 
 type Status = 'active' | 'paused' | 'done' | 'dropped';
@@ -55,10 +54,8 @@ function TextSetting({ label, value, onSave, nullable = true }: { label: string;
 }
 
 export function ProjectSettings({ slug }: { slug: string }) {
-  const [, navigate] = useLocation();
   const proj = useProject(slug);
   const configure = useConfigureProject();
-  const archive = useArchive();
   const [confirming, setConfirming] = useState(false);
   const [newArea, setNewArea] = useState('');
   const [newLabel, setNewLabel] = useState('');
@@ -181,28 +178,7 @@ export function ProjectSettings({ slug }: { slug: string }) {
         </div>
       </Panel>
 
-      {confirming && (
-        <Sheet
-          title={`Archive ${p.name}?`}
-          onClose={() => setConfirming(false)}
-          footer={
-            <>
-              <Button variant="secondary" label="Cancel" onClick={() => setConfirming(false)} />
-              <Button
-                variant="primary"
-                label="Archive"
-                onClick={() => {
-                  archive.mutate({ entity: 'project', id: p.id });
-                  setConfirming(false);
-                  navigate(paths.home);
-                }}
-              />
-            </>
-          }
-        >
-          <span className="gp-sr">{p.name}</span>
-        </Sheet>
-      )}
+      {confirming && <ArchiveProjectSheet project={p} onClose={() => setConfirming(false)} />}
     </section>
   );
 }

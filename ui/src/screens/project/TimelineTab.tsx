@@ -45,17 +45,19 @@ export function TimelineTab({ slug, zoom = 'week', groupBy = 'milestone' }: { sl
   const addDependency = useAddDependency();
   const { openTask } = usePaneNav();
   const draft = useDraftBar();
-  const [collapsed, setCollapsed] = useState<string[]>(() => loadCollapsed(slug));
+  const [stored, setStored] = useState(() => ({ slug, ids: loadCollapsed(slug) }));
+  // Collapse state belongs to one project: re-read it when the slug changes.
+  if (stored.slug !== slug) setStored({ slug, ids: loadCollapsed(slug) });
+  const collapsed = stored.slug === slug ? stored.ids : loadCollapsed(slug);
   const now = todayStr();
 
   const toggle = useCallback(
-    (id: string) =>
-      setCollapsed((cur) => {
-        const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
-        saveCollapsed(slug, next);
-        return next;
-      }),
-    [slug],
+    (id: string) => {
+      const next = collapsed.includes(id) ? collapsed.filter((x) => x !== id) : [...collapsed, id];
+      saveCollapsed(slug, next);
+      setStored({ slug, ids: next });
+    },
+    [slug, collapsed],
   );
 
   const built = useMemo(() => {
