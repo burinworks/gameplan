@@ -37,7 +37,7 @@
   cursor: pointer;
 }
 .np-color[aria-checked='true'] {
-  box-shadow: 0 0 0 2px var(--gp-sheet), 0 0 0 4px var(--gp-text);
+  box-shadow: 0 0 0 var(--gp-s2) var(--gp-sheet), 0 0 0 var(--gp-s4) var(--gp-text);
 }
 .np-color:focus-visible {
   outline: none;

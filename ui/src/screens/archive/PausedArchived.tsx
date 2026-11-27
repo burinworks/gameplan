@@ -39,7 +39,8 @@ export function PausedArchived() {
             meta={`${a.tasks} tasks · ${a.milestones} milestones`}
             trailing={
               <>
-                <Chip tone={a.status === 'done' ? 'ok' : 'neutral'}>{a.status === 'done' ? 'Done' : 'Dropped'}</Chip>
+                {a.status === 'done' && <Chip tone="ok">Done</Chip>}
+                {a.status === 'dropped' && <Chip>Dropped</Chip>}
                 {a.archivedAt && <span>{fmtDate(a.archivedAt, now)}</span>}
                 <Button
                   variant="secondary"

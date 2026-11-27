@@ -135,4 +135,13 @@ describe('PausedArchived', () => {
     await waitFor(() => expect(bodyOf(fn, 'POST', '/api/restore')).toEqual({ entity: 'project', id: 'p3' }));
     expect(screen.getByText('7 tasks · 2 milestones')).toBeInTheDocument();
   });
+
+  it('archived chip reflects the real status', async () => {
+    const row = (id: string, name: string, status: string) => ({ ...overview.archived[0]!, id, slug: id, name, status });
+    mockFetch({ '/api/overview': { ...overview, archived: [row('d', 'Dn', 'done'), row('x', 'Dr', 'dropped'), row('a', 'Ac', 'active')] } });
+    mount(<PausedArchived />);
+    await screen.findByText('Ac');
+    const chips = document.querySelectorAll('.gp-chip');
+    expect([...chips].map((c) => c.textContent)).toEqual(['Done', 'Dropped']);
+  });
 });
