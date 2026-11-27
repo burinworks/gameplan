@@ -9,22 +9,38 @@
     "dev": "tsx watch src/server/main.ts",
     "start": "node dist/src/server/main.js",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
-    "build": "tsc -p tsconfig.build.json"
+    "typecheck": "tsc --noEmit && tsc -p ui/tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.build.json && vite build --config ui/vite.config.ts",
+    "dev:ui": "vite --config ui/vite.config.ts",
+    "e2e": "playwright test"
   },
   "license": "UNLICENSED",
   "type": "module",
   "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
     "@hono/mcp": "^0.3.5",
     "@hono/node-server": "^2.1.11",
     "@modelcontextprotocol/sdk": "^1.32.2",
+    "@tanstack/react-query": "^5.108.4",
     "hono": "^4.13.22",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "wouter": "^3.13.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
+    "@testing-library/jest-dom": "^8.0.0",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.13",
     "@types/node": "^24.19.4",
+    "@types/react": "^19.3.3",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "jsdom": "^31.0.1",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
+    "vite": "^8.4.0",
     "vitest": "^5.1.2"
   },
   "engines": {

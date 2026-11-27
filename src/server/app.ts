@@ -1,4 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono, type Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { addDays, isDate, type Clock } from '../clock.js';
@@ -24,6 +27,8 @@ export interface AppDeps {
   backups?: Backups;
   /** Mounts extra routes (e.g. /mcp) before the 404 handler. */
   extend?: (app: Hono) => void;
+  /** Directory holding the built UI (index.html + assets). Served for non-API GETs when set. */
+  uiDir?: string;
 }
 
 const YOU: Ctx = { actor: 'you' };
@@ -39,10 +44,31 @@ async function body<T = Record<string, unknown>>(c: Context): Promise<T> {
   }
 }
 
+const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]', 'tauri.localhost']);
+const hostName = (host: string): string => host.replace(/:\d+$/, '').toLowerCase();
+function originAllowed(origin: string): boolean {
+  if (origin === 'tauri://localhost') return true;
+  const m = /^https?:\/\/([^/:]+|\[::1\])(:\d+)?$/i.exec(origin);
+  return !!m && LOCAL_HOSTS.has(m[1]!.toLowerCase());
+}
+
 export function createApp(deps: AppDeps): Hono {
   const { store, db } = deps;
   const app = new Hono();
   const today = () => store.today();
+
+  // DNS-rebinding and cross-site guard. /mcp has its own token check and is reachable through tunnels.
+  app.use('*', async (c, next) => {
+    if (c.req.path === '/mcp' || c.req.path.startsWith('/mcp/')) return next();
+    const host = c.req.header('host') ?? new URL(c.req.url).host;
+    const deny = (message: string) => c.json({ error: { code: 'forbidden', message } }, 403);
+    if (!LOCAL_HOSTS.has(hostName(host))) return deny('host not allowed');
+    if (c.req.method !== 'GET' && c.req.method !== 'HEAD') {
+      const origin = c.req.header('origin');
+      if (origin !== undefined && !originAllowed(origin)) return deny('origin not allowed');
+    }
+    return next();
+  });
 
   app.onError((err, c) => {
     if (err instanceof GameplanError) return c.json({ error: { code: err.code, message: err.message } }, STATUS[err.code]);
@@ -243,6 +269,17 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   deps.extend?.(app);
+  if (deps.uiDir) {
+    const root = deps.uiDir;
+    const skip = (p: string) => p.startsWith('/api') || p.startsWith('/events') || p.startsWith('/mcp');
+    const files = serveStatic({ root });
+    app.get('*', async (c, next) => (skip(c.req.path) ? next() : files(c, next)));
+    app.get('*', async (c, next) => {
+      const p = c.req.path;
+      if (skip(p) || /\.[^/]+$/.test(p)) return next();
+      return c.html(readFileSync(join(root, 'index.html'), 'utf8'));
+    });
+  }
   app.notFound((c) => c.json({ error: { code: 'not_found', message: `no route ${c.req.method} ${c.req.path}` } }, 404));
   return app;
 }

@@ -1,0 +1,109 @@
+@import '@fontsource-variable/inter';
+@import './tokens.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--gp-font);
+  font-size: var(--gp-fs-body);
+  line-height: 1.4;
+  font-weight: var(--gp-fw-regular);
+  font-feature-settings: 'cv11', 'ss01';
+  color: var(--gp-text);
+  background: var(--gp-wall);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--gp-focus);
+}
+
+/* Web shell paints a wall and two blurred blobs behind the window. */
+html[data-shell='web'] body {
+  background: var(--gp-wall);
+}
+html[data-shell='web'] body::before,
+html[data-shell='web'] body::after {
+  content: '';
+  position: fixed;
+  width: 50vw;
+  height: 50vw;
+  border-radius: 50%;
+  filter: blur(var(--gp-blur-blob));
+  pointer-events: none;
+  z-index: var(--gp-z-base);
+}
+html[data-shell='web'] body::before {
+  background: var(--gp-blobA);
+  top: -15vw;
+  left: -10vw;
+}
+html[data-shell='web'] body::after {
+  background: var(--gp-blobB);
+  bottom: -15vw;
+  right: -10vw;
+}
+
+/* Tauri paints nothing here; native vibrancy shows through (Plan 3). */
+html[data-shell='tauri'] body {
+  background: transparent;
+}
+
+.gp-window {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  background: var(--gp-win);
+  -webkit-backdrop-filter: var(--gp-blur-win);
+  backdrop-filter: var(--gp-blur-win);
+  box-shadow: var(--gp-shadow-window);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .gp-window {
+    background: var(--gp-panelSolid);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  :root {
+    --gp-card: var(--gp-panelSolid);
+  }
+  :root[data-theme='dark'] {
+    --gp-card: var(--gp-panelSolid);
+  }
+}
+
+/* Motion off, except the agent-change highlight fade. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --gp-fast: 0ms linear;
+    --gp-pane: 0ms linear;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --gp-edge: rgba(0, 0, 0, 0.2);
+  }
+  :root[data-theme='dark'] {
+    --gp-edge: rgba(255, 255, 255, 0.2);
+  }
+}

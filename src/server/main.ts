@@ -1,6 +1,7 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
 import { lastBackup, snapshot, startBackups } from '../backup.js';
 import { systemClock } from '../clock.js';
@@ -24,6 +25,10 @@ const version = (() => {
   }
 })();
 
+// Built UI: dist/ui next to the compiled engine (dist/src/server), or the repo's dist/ui when run from source.
+const here = dirname(fileURLToPath(import.meta.url));
+const uiDir = [process.env.GAMEPLAN_UI, join(here, '..', '..', 'ui'), join(here, '..', '..', 'dist', 'ui')].find((d) => d && existsSync(join(d, 'index.html')));
+
 const db = openDb(dbPath);
 const clock = systemClock;
 const store = new Store(db, clock);
@@ -33,6 +38,7 @@ const app = createApp({
   store,
   db,
   clock,
+  uiDir,
   backups: {
     last: () => lastBackup(backupDir),
     now: () => {
