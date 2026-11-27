@@ -1,6 +1,8 @@
 import type { DatabaseSync, SQLInputValue, StatementSync } from 'node:sqlite';
-import { isDate, type Clock } from '../clock.js';
+import { addDays, isDate, type Clock } from '../clock.js';
 import { newId, slugify } from '../ids.js';
+import { planMilestone } from './plan.js';
+import { templateById, type Template } from './templates.js';
 import { assertAgentAllowed, getSettings, validateSettingsPatch, type Settings, type SettingsPatch } from './settings.js';
 import {
   ATTACHMENT_KIND,
@@ -60,6 +62,10 @@ export interface CreateProjectInput {
   github?: string | null;
   areas?: { name: string; color?: string | null }[];
   firstMilestone?: { name: string; due?: string | null };
+  /** Built-in template: areas, milestones, dated tasks and to-dos. `firstMilestone` is ignored with one. */
+  template?: Template['id'];
+  /** Template start date (default today). */
+  startDate?: string;
 }
 
 export interface ConfigureProjectInput {
@@ -205,6 +211,10 @@ export function inferAttachment(url: string): { kind: AttachmentKind; ref: strin
   }
   const pr = /github\.com\/[^/]+\/[^/]+\/pull\/(\d+)/i.exec(url);
   if (pr) return { kind: 'pr', ref: `#${pr[1]}`, title: `#${pr[1]}` };
+  const issue = /github\.com\/[^/]+\/[^/]+\/issues\/(\d+)/i.exec(url);
+  if (issue) return { kind: 'ticket', ref: `#${issue[1]}`, title: `#${issue[1]}` };
+  const ticket = /^https?:\/\/[^/]+\/browse\/([A-Z][A-Z0-9]+-\d+)/.exec(url) ?? /linear\.app\/[^/]+\/issue\/([A-Z][A-Z0-9]*-\d+)/.exec(url);
+  if (ticket) return { kind: 'ticket', ref: ticket[1]!, title: ticket[1]! };
   const last = url.replace(/[?#].*$/, '').replace(/\/+$/, '').split('/').pop() || url;
   if (/^projects\//.test(url)) return { kind: 'note', ref: null, title: last };
   if (/^(\/|~\/|file:\/\/)/.test(url)) return { kind: 'file', ref: null, title: last };
@@ -457,6 +467,12 @@ export class Store {
   createProject(ctx: Ctx, input: CreateProjectInput): Project {
     assertAgentAllowed(this.settings(), ctx.actor, 'create_project');
     const name = text('name', input.name);
+    const tpl = input.template === undefined ? undefined : templateById(input.template);
+    if (input.template !== undefined && !tpl) throw new GameplanError('invalid', `unknown template "${String(input.template)}" (valid: report, launch, research)`);
+    if (input.startDate !== undefined && !isDate(input.startDate)) throw new GameplanError('invalid', `startDate must be a valid YYYY-MM-DD date (got ${JSON.stringify(input.startDate)})`);
+    const areaList = tpl
+      ? [...tpl.areas, ...(input.areas ?? []).filter((a) => !tpl.areas.some((t) => t.name.toLowerCase() === String(a.name).trim().toLowerCase()))]
+      : (input.areas ?? []);
     return this.write(ctx, (c) => {
       const baseSlug = slugify(input.slug ?? name) || 'project';
       let slug = baseSlug;
@@ -478,7 +494,7 @@ export class Store {
         now,
       );
       const seen = new Set<string>();
-      (input.areas ?? []).forEach((a, i) => {
+      areaList.forEach((a, i) => {
         const an = text('area name', a.name);
         if (seen.has(an.toLowerCase())) throw new GameplanError('invalid', `duplicate area "${an}"`);
         seen.add(an.toLowerCase());
@@ -493,8 +509,26 @@ export class Store {
         kind: 'created',
         after: { slug, name, color, areas: p.areas.map((a) => a.name) },
       });
-      if (input.firstMilestone) this.createMilestone(c, slug, input.firstMilestone);
+      if (tpl) this.applyTemplate(c, slug, tpl, input.startDate ?? this.today());
+      else if (input.firstMilestone) this.createMilestone(c, slug, input.firstMilestone);
       return p;
+    });
+  }
+
+  /** Milestones (due = start + offset) and their dated tasks, one `planned` event per milestone. */
+  private applyTemplate(c: WCtx, slug: string, tpl: Template, startDate: string): void {
+    const ids: string[] = [];
+    tpl.milestones.forEach((ms, mi) => {
+      const m = this.createMilestone(c, slug, { name: ms.name, due: addDays(startDate, ms.offsetDays) });
+      const tasks = tpl.tasks.map((t, i) => ({ t, i })).filter((x) => x.t.milestone === mi);
+      const keyOf = (i: number): string => (tpl.tasks[i]!.milestone === mi ? `t${i}` : ids[i]!);
+      const r = planMilestone(this, c, m.id, {
+        tasks: tasks.map(({ t, i }) => {
+          const start = addDays(startDate, t.startOffset);
+          return { key: `t${i}`, title: t.title, area: t.area, start, end: addDays(start, t.days - 1), todos: t.todos.map((title) => ({ title })), dependsOn: (t.after ?? []).map(keyOf) };
+        }),
+      });
+      for (const { i } of tasks) ids[i] = r.tasks[`t${i}`]!;
     });
   }
 

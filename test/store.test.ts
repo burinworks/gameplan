@@ -238,3 +238,17 @@ describe('onChange', () => {
     expect(store.db.prepare('SELECT count(*) n FROM projects').get()).toEqual({ n: 0 });
   });
 });
+
+describe('ticket links', () => {
+  it('Jira, Linear and GitHub issue urls become tickets; PRs stay PRs', async () => {
+    const { inferAttachment } = await import('../src/domain/store.js');
+    expect(inferAttachment('https://acme.atlassian.net/browse/OPS-142')).toMatchObject({ kind: 'ticket', ref: 'OPS-142' });
+    expect(inferAttachment('https://jira.acme.io/browse/AB2-7?focusedCommentId=1')).toMatchObject({ kind: 'ticket', ref: 'AB2-7' });
+    expect(inferAttachment('https://linear.app/acme/issue/ENG-88/fix-login')).toMatchObject({ kind: 'ticket', ref: 'ENG-88' });
+    expect(inferAttachment('https://github.com/o/r/issues/12')).toMatchObject({ kind: 'ticket', ref: '#12' });
+    expect(inferAttachment('https://github.com/o/r/pull/12')).toMatchObject({ kind: 'pr', ref: '#12' });
+    const { store, msId } = base();
+    const t = store.createTask(YOU, msId, { title: 'T' });
+    expect(store.attach(YOU, t.id, { role: 'context', url: 'https://linear.app/acme/issue/ENG-88' })).toMatchObject({ kind: 'ticket', ref: 'ENG-88', title: 'ENG-88' });
+  });
+});
