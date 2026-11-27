@@ -69,7 +69,7 @@
   cursor: pointer;
 }
 .gp-set__accent[aria-checked='true'] {
-  box-shadow: 0 0 0 2px var(--gp-card), 0 0 0 4px var(--gp-text2);
+  box-shadow: 0 0 0 var(--gp-s2) var(--gp-card), 0 0 0 var(--gp-s4) var(--gp-text2);
 }
 .gp-set__select {
   height: var(--gp-control);

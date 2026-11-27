@@ -18,11 +18,10 @@ type Client = 'claude-code' | 'codex' | 'cursor' | 'gemini' | 'desktop' | 'chatg
 const CONNECT: Record<Client, { label: string; note?: string; snippet: string }> = {
   'claude-code': { label: 'Claude Code', snippet: `claude mcp add --transport http gameplan ${ENDPOINT}` },
   codex: { label: 'Codex', snippet: `codex mcp add gameplan --url ${ENDPOINT}` },
-  cursor: { label: 'Cursor', note: 'Add to ~/.cursor/mcp.json', snippet: `{ "mcpServers": { "gameplan": { "url": "${ENDPOINT}" } } }` },
+  cursor: { label: 'Cursor', snippet: `{ "mcpServers": { "gameplan": { "url": "${ENDPOINT}" } } }` },
   gemini: { label: 'Gemini CLI', snippet: `gemini mcp add --transport http gameplan ${ENDPOINT}` },
   desktop: {
     label: 'Claude Desktop',
-    note: 'In claude_desktop_config.json, bridged with mcp-remote',
     snippet: `{ "mcpServers": { "gameplan": { "command": "npx", "args": ["-y", "mcp-remote", "${ENDPOINT}"] } } }`,
   },
   chatgpt: {
@@ -94,7 +93,10 @@ export function AppSettings() {
         qc.setQueryData(['settings'], fresh);
         after?.();
       },
-      onError: (e) => setErrors((prev) => ({ ...prev, [key]: errorLine(e instanceof ApiError ? e : { code: 'internal', message: e.message }) })),
+      onError: (e) => {
+        applyTheme({ appearance: (s.appearance as 'system' | 'light' | 'dark') ?? 'system', accent: s.accent });
+        setErrors((prev) => ({ ...prev, [key]: errorLine(e instanceof ApiError ? e : { code: 'internal', message: e.message }) }));
+      },
     });
   };
   const set = <K extends keyof PublicSettings>(key: K, value: PublicSettings[K]) => save(key, { [key]: value });
