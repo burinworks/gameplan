@@ -67,12 +67,38 @@ const stack: string[] = [];
 const recent: EventRow[] = [];
 const waiters = new Set<() => void>();
 let lastBatch: string | null = null;
+/** Kinds the engine's revert accepts for one of your own changes (see src/domain/revert.ts); events that only the Inbox undo or nothing can reverse stay off the stack. */
+const STACKABLE = new Set([
+  'dates_changed',
+  'status_changed',
+  'updated',
+  'review_accepted',
+  'review_sent_back',
+  'resume_noted',
+  'todo_done',
+  'todo_undone',
+  'dependency_added',
+  'dependency_removed',
+  'attached',
+  'detached',
+  'archived',
+  'restored',
+  'created',
+  'planned',
+  'reordered',
+]);
+function stackable(e: EventRow): boolean {
+  if (!STACKABLE.has(e.kind)) return false;
+  if ((e.kind === 'updated' || e.kind === 'status_changed') && e.after && 'areas' in e.after) return false;
+  if (e.kind === 'created' && !['project', 'milestone', 'task', 'todo'].includes(e.entity)) return false;
+  return true;
+}
 export const undoStack = {
   push(e: EventRow): void {
     recent.push(e);
     if (recent.length > 200) recent.shift();
     waiters.forEach((f) => f());
-    if (e.actor !== 'you' || e.kind === 'reverted') return;
+    if (e.actor !== 'you' || !stackable(e)) return;
     if (e.batchId && e.batchId === lastBatch) return;
     lastBatch = e.batchId || null;
     stack.push(e.id);
@@ -121,7 +147,7 @@ export async function undoLast(): Promise<void> {
   } catch (e) {
     if (e instanceof ApiError) {
       if (e.code === 'network') stack.push(id);
-      setErrorLine(errorLine(e));
+      setErrorLine(e.code === 'invalid' && !e.message.includes('cycle') ? "Can't undo that" : errorLine(e));
     }
   }
 }

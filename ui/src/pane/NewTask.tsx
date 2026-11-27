@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import { useCreateTask, useProject, useTriage, type CreateTaskBody } from '../api/hooks';
 import type { Executor, Priority } from '../api/types';
@@ -21,6 +21,7 @@ export function NewTask({ slug, milestoneId, title: initialTitle, inboxId }: { s
   const close = useCloseTask();
   const [loc, navigate] = useLocation();
   const create = useCreateTask();
+  const busy = useRef(false); // set synchronously: mutation state lags a keypress behind
   const triage = useTriage();
 
   const [title, setTitle] = useState(initialTitle ?? '');
@@ -51,7 +52,9 @@ export function NewTask({ slug, milestoneId, title: initialTitle, inboxId }: { s
   const candidates = tasks.filter((t) => !after.some((a) => a.id === t.id));
 
   const submit = () => {
-    if (!valid) return;
+    if (!valid || busy.current) return;
+    busy.current = true;
+    const release = { onSettled: () => void (busy.current = false) };
     const body: CreateTaskBody = { title: title.trim() };
     if (area) body.area = area;
     if (isDate(start)) body.start = start;
@@ -68,8 +71,8 @@ export function NewTask({ slug, milestoneId, title: initialTitle, inboxId }: { s
     if (link.trim()) body.links = [{ url: link.trim() }];
     const tab = loc.split('/')[3];
     const open = (id: string) => navigate(paths.task(slug, id, isTab(tab) ? tab : 'timeline'), { replace: true });
-    if (inboxId) triage.mutate({ id: inboxId, to: { as: 'task', milestoneId: ms, task: body } }, { onSuccess: (r) => r.created && open(r.created.id) });
-    else create.mutate({ milestoneId: ms, body }, { onSuccess: (t) => open(t.id) });
+    if (inboxId) triage.mutate({ id: inboxId, to: { as: 'task', milestoneId: ms, task: body } }, { ...release, onSuccess: (r) => r.created && open(r.created.id) });
+    else create.mutate({ milestoneId: ms, body }, { ...release, onSuccess: (t) => open(t.id) });
   };
 
   return (

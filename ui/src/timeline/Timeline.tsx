@@ -98,6 +98,10 @@ function BarView({
   clippedStart,
   clippedEnd,
   trackW,
+  inset,
+  visW,
+  nextX,
+  order,
   dragging,
   linkTarget,
   canLink,
@@ -112,6 +116,14 @@ function BarView({
   clippedStart: boolean;
   clippedEnd: boolean;
   trackW: number;
+  /** Left offset of the visible part of the bar (an earlier bar in the row covers the rest). */
+  inset: number;
+  /** Width of the visible part of the bar for its inside label. */
+  visW: number;
+  /** Left edge of the next bar in the row, or null. */
+  nextX: number | null;
+  /** Paint order within the row: later bars sit on top. */
+  order: number;
   dragging: boolean;
   linkTarget: boolean;
   canLink: boolean;
@@ -121,7 +133,7 @@ function BarView({
   onHandleDown: (e: React.PointerEvent<HTMLElement>) => void;
 }) {
   const changed = useHighlight(bar.id);
-  const fits = labelFits(bar.label, w);
+  const fits = labelFits(bar.label, visW);
   const diamond = bar.diamond ?? bar.kind === 'milestone';
   const cls = [
     'tl-bar',
@@ -137,8 +149,8 @@ function BarView({
   ]
     .filter(Boolean)
     .join(' ');
-  const style = { left: `${x}px`, width: `${w}px`, '--bar-color': bar.color } as CSSProperties;
-  const outsideMax = trackW - (x + w + LINK_GAP) - 4;
+  const style = { left: `${x}px`, width: `${w}px`, zIndex: dragging ? 1000 : order + 1, '--bar-color': bar.color } as CSSProperties;
+  const outsideMax = Math.min(trackW, nextX ?? trackW) - (x + w + LINK_GAP) - 4;
   return (
     <>
       <div
@@ -159,7 +171,7 @@ function BarView({
         {bar.draggable && <span className="tl-edge tl-edge-l" style={{ width: edgeZone(w) }} aria-hidden="true" />}
         {bar.draggable && <span className="tl-edge tl-edge-r" style={{ width: edgeZone(w) }} aria-hidden="true" />}
         {fits && (
-          <span className="tl-bar-label" data-label dir="auto" title={bar.label}>
+          <span className="tl-bar-label" data-label dir="auto" title={bar.label} style={{ marginLeft: `${inset}px`, maxWidth: `${visW}px` }}>
             {bar.label}
           </span>
         )}
@@ -237,6 +249,24 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
     },
     [overrides],
   );
+
+  /** Bars of one row sorted by x, with the part of each that its neighbours leave visible for labels. */
+  const layoutRow = (bars: TLBar[]) => {
+    const placed = bars.flatMap((b) => {
+      const e = effective(b);
+      const g = barGeom(e.start, e.end, from, to, dayW);
+      return g ? [{ b, g }] : [];
+    });
+    placed.sort((a, c) => a.g.x - c.g.x);
+    let prevRight = -Infinity;
+    return placed.map((p, i) => {
+      const nextX = placed[i + 1]?.g.x ?? null;
+      const visL = Math.max(p.g.x, prevRight);
+      const visR = Math.min(p.g.x + p.g.w, nextX ?? Infinity);
+      prevRight = Math.max(prevRight, p.g.x + p.g.w);
+      return { ...p, inset: visL - p.g.x, visW: visR - visL, nextX };
+    });
+  };
 
   // Drop an override once the bar's own dates move on (the write landed or someone else edited it).
   useEffect(() => {
@@ -411,12 +441,9 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
                 <div key={`g:${it.id}`} className="tl-trackrow is-group" style={{ top: HEADER_H + it.y, height: it.h }} />
               ) : (
                 <div key={it.row.id} className="tl-trackrow" style={{ top: HEADER_H + it.y, height: it.h }}>
-                  {it.row.bars.map((b) => {
-                    const e = effective(b);
-                    const g = barGeom(e.start, e.end, from, to, dayW);
-                    if (!g) return null;
-                    const shown: TLBar = { ...b, ...e };
+                  {layoutRow(it.row.bars).map(({ b, g, inset, visW, nextX }, order) => {
                     const draggable = b.draggable && !!onReschedule;
+                    const shown: TLBar = { ...b, ...effective(b) };
                     return (
                       <BarView
                         key={b.id}
@@ -426,6 +453,10 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
                         clippedStart={g.clippedStart}
                         clippedEnd={g.clippedEnd}
                         trackW={totalW}
+                        inset={inset}
+                        visW={visW}
+                        nextX={nextX}
+                        order={order}
                         dragging={drag.dragId === b.id}
                         linkTarget={drag.link?.target === b.id && drag.link.fromId !== b.id}
                         canLink={canLinkAny && b.kind !== 'draft'}

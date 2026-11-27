@@ -47,6 +47,11 @@ export const useErrorLine = (): string | null =>
   );
 const onError = (e: Error) => setErrorLine(errorLine(e instanceof ApiError ? e : { code: 'internal', message: e.message }));
 const mut = { onError, onSuccess: () => setErrorLine(null) };
+/** For a caller that shows the refusal in place: skips the shared error line. */
+export interface InlineErrorOpt {
+  inlineError?: boolean;
+}
+const mutFor = (o?: InlineErrorOpt) => (o?.inlineError ? { onSuccess: mut.onSuccess } : mut);
 
 export function createQueryClient(): QueryClient {
   return new QueryClient({
@@ -292,10 +297,11 @@ export const useArchive = () =>
 export const useRestore = () =>
   useMutation({ mutationFn: (v: { entity: ArchivableEntity; id: string }) => api<{ ok: true }>('POST', '/api/restore', v), ...mut });
 
-export const useRevert = () => useMutation({ mutationFn: (eventId: string) => api<unknown>('POST', `/api/events/${encodeURIComponent(eventId)}/revert`), ...mut });
+export const useRevert = (o?: InlineErrorOpt) =>
+  useMutation({ mutationFn: (eventId: string) => api<unknown>('POST', `/api/events/${encodeURIComponent(eventId)}/revert`), ...mutFor(o) });
 
-export const usePatchSettings = () =>
-  useMutation({ mutationFn: (patch: Partial<Omit<PublicSettings, 'mcp_token_set'>> & Record<string, unknown>) => api<PublicSettings>('PATCH', '/api/settings', patch), ...mut });
+export const usePatchSettings = (o?: InlineErrorOpt) =>
+  useMutation({ mutationFn: (patch: Partial<Omit<PublicSettings, 'mcp_token_set'>> & Record<string, unknown>) => api<PublicSettings>('PATCH', '/api/settings', patch), ...mutFor(o) });
 
 export const useBackupNow = () =>
   useMutation({ mutationFn: () => api<{ last: { file: string; at: string } | null }>('POST', '/api/backup'), ...mut });

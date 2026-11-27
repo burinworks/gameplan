@@ -74,7 +74,7 @@ function Mono({ text }: { text: string }) {
 
 export function AppSettings() {
   const settings = useSettings();
-  const patch = usePatchSettings();
+  const patch = usePatchSettings({ inlineError: true });
   const qc = useQueryClient();
   const agents = useAgents();
   const backup = useBackup();

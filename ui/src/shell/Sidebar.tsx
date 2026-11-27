@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { Link, useLocation, useRoute } from 'wouter';
-import { useArchive, useInbox, useOverview, useProject, useProjects } from '../api/hooks';
+import { useInbox, useOverview, useProject, useProjects } from '../api/hooks';
 import { paths } from '../app/routes';
 import { today } from '../app/today';
 import { fmtDate, fmtPct } from '../lib/format';
+import { ArchiveProjectSheet } from '../screens/project/ArchiveProjectSheet';
 import { Button } from '../ui/Button';
 import { Icon, type IconName } from '../ui/Icon';
 import { Menu, type MenuItem } from '../ui/Menu';
-import { Sheet } from '../ui/Sheet';
 import { Swatch } from '../ui/Swatch';
 import './sidebar.css';
 
@@ -29,7 +29,6 @@ export function Sidebar({ onSearch, onNewProject }: { onSearch: () => void; onNe
   const inbox = useInbox();
   const overview = useOverview();
   const current = useProject(slug);
-  const archive = useArchive();
   const [confirming, setConfirming] = useState(false);
   const now = today();
 
@@ -91,28 +90,7 @@ export function Sidebar({ onSearch, onNewProject }: { onSearch: () => void; onNe
       <div className="gp-sidebar__spacer" />
       <NavLink to={paths.settings} icon="settings" label="Settings" active={loc === paths.settings} />
 
-      {confirming && proj && (
-        <Sheet
-          title={`Archive ${proj.name}?`}
-          onClose={() => setConfirming(false)}
-          footer={
-            <>
-              <Button variant="secondary" label="Cancel" onClick={() => setConfirming(false)} />
-              <Button
-                variant="primary"
-                label="Archive"
-                onClick={() => {
-                  archive.mutate({ entity: 'project', id: proj.id });
-                  setConfirming(false);
-                  navigate(paths.home);
-                }}
-              />
-            </>
-          }
-        >
-          <span className="gp-sr">{proj.name}</span>
-        </Sheet>
-      )}
+      {confirming && proj && <ArchiveProjectSheet project={proj} onClose={() => setConfirming(false)} />}
     </nav>
   );
 }

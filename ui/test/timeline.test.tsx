@@ -179,6 +179,23 @@ describe('Timeline', () => {
     expect(el('b1').textContent).not.toContain(long);
   });
 
+  it('overlapping bars in one row: labels stay in the visible part and later bars paint on top', () => {
+    const a = bar({ id: 'a', label: 'Outline', start: '2026-11-20', end: '2026-12-10' });
+    const b = bar({ id: 'b', label: 'Draft', start: '2026-11-23', end: '2026-12-20' });
+    setup([{ id: 'r', label: 'R', bars: [b, a] }]);
+    const px = (n: HTMLElement, k: 'left' | 'width') => parseFloat(n.style[k]);
+    const aRight = px(el('a'), 'left') + px(el('a'), 'width');
+    const bRight = px(el('b'), 'left') + px(el('b'), 'width');
+    // a keeps only 3 days before b starts: no room for its label, inside or outside
+    expect(el('a').querySelector('[data-label]')).toBeNull();
+    expect([...document.querySelectorAll('[data-label-outside]')].some((o) => o.textContent === 'Outline')).toBe(false);
+    // b's label starts where a ends and fills the rest of b
+    const label = el('b').querySelector('[data-label]') as HTMLElement;
+    expect(parseFloat(label.style.marginLeft)).toBe(aRight - px(el('b'), 'left'));
+    expect(parseFloat(label.style.maxWidth)).toBe(bRight - aRight);
+    expect(Number(el('b').style.zIndex)).toBeGreaterThan(Number(el('a').style.zIndex));
+  });
+
   it('keeps short labels inside; labels carry dir=auto and a title', () => {
     setup(rowOf(bar({ label: 'שלום', start: '2026-11-20', end: '2026-12-20' })));
     const inner = el('b1').querySelector('[data-label]') as HTMLElement;

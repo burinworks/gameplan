@@ -2,6 +2,7 @@ import { QueryClient } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { startLive, undoLast, undoStack, useHighlight } from '../src/api/live';
+import { useErrorLine } from '../src/api/hooks';
 import type { EventRow } from '../src/api/types';
 import { mockFetch } from './setup';
 
@@ -42,6 +43,8 @@ const ev = (over: Partial<EventRow> = {}): EventRow => ({
   at: '2026-11-27T10:00:00Z',
   ...over,
 });
+
+const get = () => renderHook(() => useErrorLine()).result.current;
 
 let qc: QueryClient;
 let spy: ReturnType<typeof vi.spyOn>;
@@ -149,5 +152,26 @@ describe('live sync', () => {
   it('first ready does not invalidate', () => {
     FakeES.last.emit('ready', { today: '2026-11-27' });
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('never stacks events the engine will not revert', () => {
+    for (const kind of ['settings_changed', 'captured', 'triaged', 'day_planned']) FakeES.last.emit('change', ev({ kind: kind as EventRow['kind'] }));
+    FakeES.last.emit('change', ev({ kind: 'updated', entity: 'project', after: { areas: [] } }));
+    expect(undoStack.size()).toBe(0);
+    FakeES.last.emit('change', ev({ kind: 'updated', entity: 'task', after: { title: 'x' } }));
+    expect(undoStack.size()).toBe(1);
+  });
+
+  it('an invalid revert is dropped with a plain line and does not revert an older change', async () => {
+    vi.useRealTimers();
+    const fn = mockFetch({
+      'POST /api/events/new/revert': () => Response.json({ error: { code: 'invalid', message: 'weird_kind events cannot be reverted' } }, { status: 400 }),
+    });
+    undoStack.push(ev({ id: 'old' }));
+    undoStack.push(ev({ id: 'new' }));
+    await undoLast();
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(undoStack.size()).toBe(1);
+    expect(get()).toBe("Can't undo that");
   });
 });

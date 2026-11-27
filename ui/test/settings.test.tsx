@@ -4,16 +4,22 @@ import userEvent from '@testing-library/user-event';
 import { Router } from 'wouter';
 import { memoryLocation } from 'wouter/memory-location';
 import { describe, expect, it, vi } from 'vitest';
+import { useErrorLine } from '../src/api/hooks';
 import { AppSettings } from '../src/screens/settings/AppSettings';
 import { agentsFixture, settingsFixture } from './fixtures/settings';
 import { mockFetch } from './setup';
 
-function setup() {
+function Line() {
+  return <output data-testid="line">{useErrorLine()}</output>;
+}
+
+function setup(refuse = false) {
   vi.stubGlobal('matchMedia', () => ({ matches: false }));
   let state = { ...settingsFixture };
   const fetchFn = mockFetch({
     '/api/settings': () => state,
     'PATCH /api/settings': ({ body }: { body: Record<string, unknown> }) => {
+      if (refuse) return Response.json({ error: { code: 'invalid', message: 'bad value' } }, { status: 400 });
       const { mcp_token, ...rest } = body;
       state = { ...state, ...rest } as typeof state;
       if (mcp_token !== undefined) state.mcp_token_set = mcp_token !== null;
@@ -29,6 +35,7 @@ function setup() {
     <QueryClientProvider client={qc}>
       <Router hook={hook}>
         <AppSettings />
+        <Line />
       </Router>
     </QueryClientProvider>,
   );
@@ -91,5 +98,12 @@ describe('AppSettings', () => {
     expect(screen.getByRole('link', { name: 'Export Markdown' })).toHaveAttribute('href', '/api/export?format=md');
     await userEvent.click(screen.getByRole('button', { name: 'Back up now' }));
     await waitFor(() => expect(f.mock.calls.some(([u, i]) => String(u) === '/api/backup' && (i as RequestInit | undefined)?.method === 'POST')).toBe(true));
+  });
+
+  it('a refused write shows one message, not also the shared line', async () => {
+    setup(true);
+    await userEvent.click(await screen.findByRole('radio', { name: 'Dark' }));
+    await screen.findByText('Bad value');
+    expect(screen.getByTestId('line')).toBeEmptyDOMElement();
   });
 });

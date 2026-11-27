@@ -1,7 +1,8 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useConfigureProject, useProject } from '../../api/hooks';
 import type { ConfigureProjectBody } from '../../api/hooks';
 import type { Executor, Priority } from '../../api/types';
+import { useDraft } from '../../lib/draft';
 import { Button, Chip, Field, Panel, Segmented, Swatch } from '../../ui';
 import { ColorPicker } from '../../sheets/NewProject';
 import { ArchiveProjectSheet } from './ArchiveProjectSheet';
@@ -36,19 +37,17 @@ function SettingRow({ label, children }: { label: string; children: ReactNode })
   );
 }
 
-/** Text field that saves on blur when the value changed. */
-function TextSetting({ label, value, onSave, nullable = true }: { label: string; value: string; onSave: (v: string | null) => void; nullable?: boolean }) {
-  const [v, setV] = useState(value);
-  useEffect(() => setV(value), [value]);
-  const commit = () => {
+/** Text field that saves on blur or Enter when the value changed; a refused save restores the server value. */
+function TextSetting({ label, value, onSave, nullable = true }: { label: string; value: string; onSave: (v: string | null) => Promise<unknown>; nullable?: boolean }) {
+  const d = useDraft(value, (v) => {
     const t = v.trim();
-    if (t === value) return;
-    if (!t && !nullable) return setV(value);
-    onSave(t || null);
-  };
+    // Nothing to send: put the server value back.
+    if (t === value || (!t && !nullable)) return Promise.reject(new Error('nothing to save'));
+    return onSave(t || null);
+  });
   return (
-    <div onBlur={commit}>
-      <Field label={label} value={v} onChange={setV} onEnter={commit} />
+    <div onBlur={d.bind.onBlur} onFocus={d.bind.onFocus} onKeyDown={(e) => !e.nativeEvent.isComposing && d.bind.onKeyDown(e)}>
+      <Field label={label} value={d.value} onChange={d.set} />
     </div>
   );
 }
@@ -64,6 +63,7 @@ export function ProjectSettings({ slug }: { slug: string }) {
   if (!p) return <section aria-label="Project settings" />;
 
   const save = (patch: ConfigureProjectBody) => configure.mutate({ slug, patch });
+  const saveAsync = (patch: ConfigureProjectBody) => configure.mutateAsync({ slug, patch });
   const areas: AreaDraft[] = p.areas.map((a) => ({ id: a.id, name: a.name, color: a.color }));
   const saveAreas = (list: AreaDraft[]) => save({ areas: list });
   const move = (i: number, d: -1 | 1) => {
@@ -74,8 +74,8 @@ export function ProjectSettings({ slug }: { slug: string }) {
     saveAreas(list);
   };
   const rename = (i: number, name: string | null) => {
-    if (!name) return;
-    saveAreas(areas.map((a, k) => (k === i ? { ...a, name } : a)));
+    if (!name) return Promise.reject(new Error('empty name'));
+    return saveAsync({ areas: areas.map((a, k) => (k === i ? { ...a, name } : a)) });
   };
   const addArea = () => {
     const n = newArea.trim();
@@ -98,7 +98,7 @@ export function ProjectSettings({ slug }: { slug: string }) {
 
       <Panel title="General">
         <SettingRow label="Name">
-          <TextSetting label="Name" value={p.name} nullable={false} onSave={(v) => v && save({ name: v })} />
+          <TextSetting label="Name" value={p.name} nullable={false} onSave={(v) => (v ? saveAsync({ name: v }) : Promise.reject(new Error('empty name')))} />
         </SettingRow>
         <SettingRow label="Colour">
           <ColorPicker value={p.color} onChange={(hex) => save({ color: hex })} />
@@ -110,13 +110,13 @@ export function ProjectSettings({ slug }: { slug: string }) {
 
       <Panel title="Links">
         <SettingRow label="Vault note">
-          <TextSetting label="Vault note" value={p.vaultNote ?? ''} onSave={(v) => save({ vaultNote: v })} />
+          <TextSetting label="Vault note" value={p.vaultNote ?? ''} onSave={(v) => saveAsync({ vaultNote: v })} />
         </SettingRow>
         <SettingRow label="Repository">
-          <TextSetting label="Repository" value={p.repo ?? ''} onSave={(v) => save({ repo: v })} />
+          <TextSetting label="Repository" value={p.repo ?? ''} onSave={(v) => saveAsync({ repo: v })} />
         </SettingRow>
         <SettingRow label="GitHub">
-          <TextSetting label="GitHub" value={p.github ?? ''} onSave={(v) => save({ github: v })} />
+          <TextSetting label="GitHub" value={p.github ?? ''} onSave={(v) => saveAsync({ github: v })} />
         </SettingRow>
       </Panel>
 
@@ -124,8 +124,8 @@ export function ProjectSettings({ slug }: { slug: string }) {
         <SettingRow label="Default priority">
           <Segmented label="Default priority" options={PRIORITY} value={p.defaultPriority} onChange={(defaultPriority) => save({ defaultPriority })} />
         </SettingRow>
-        <SettingRow label="Default executor">
-          <Segmented label="Default executor" options={EXECUTOR} value={p.defaultExecutor} onChange={(defaultExecutor) => save({ defaultExecutor })} />
+        <SettingRow label="Done by">
+          <Segmented label="Done by" options={EXECUTOR} value={p.defaultExecutor} onChange={(defaultExecutor) => save({ defaultExecutor })} />
         </SettingRow>
       </Panel>
 

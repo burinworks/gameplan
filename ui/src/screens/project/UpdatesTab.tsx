@@ -107,7 +107,7 @@ function dayHeading(day: string, now: string): string {
 }
 
 function UpdateItem({ e, now, at }: { e: UpdateRow; now: string; at: Date }) {
-  const revert = useRevert();
+  const revert = useRevert({ inlineError: true });
   const [err, setErr] = useState<string | null>(null);
   const { text, note, conflicts } = describe(e, now);
   const revertible = !NOT_REVERTIBLE.has(e.kind);

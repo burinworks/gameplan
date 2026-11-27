@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useCreateMilestone } from '../api/hooks';
 import { today } from '../app/today';
 import { Button, Field, Segmented } from '../ui';
@@ -9,6 +9,7 @@ import './task-pane.css';
 export function NewMilestone({ slug }: { slug: string }) {
   const close = useCloseTask();
   const create = useCreateMilestone();
+  const busy = useRef(false); // set synchronously: mutation state lags a keypress behind
   const [name, setName] = useState('');
   const [due, setDue] = useState('');
   const [status, setStatus] = useState<'planned' | 'active'>('planned');
@@ -19,7 +20,8 @@ export function NewMilestone({ slug }: { slug: string }) {
   const step = (n: number) => setDue(addDays(isDate(due) ? due : today(), n));
 
   const submit = () => {
-    if (!valid) return;
+    if (!valid || busy.current) return;
+    busy.current = true;
     create.mutate(
       {
         slug,
@@ -30,7 +32,7 @@ export function NewMilestone({ slug }: { slug: string }) {
           ...(goal.trim() ? { description: goal.trim() } : {}),
         },
       },
-      { onSuccess: close },
+      { onSettled: () => void (busy.current = false), onSuccess: close },
     );
   };
 

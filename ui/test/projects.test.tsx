@@ -106,6 +106,24 @@ describe('ProjectSettings', () => {
     expect(screen.getByRole('button', { name: 'Delete Backend' })).toBeEnabled();
   });
 
+  it('a refused text save restores the server value', async () => {
+    mockFetch({ '/api/projects/alpha': tree, 'PATCH /api/projects/alpha': () => Response.json({ error: { code: 'forbidden', message: 'no' } }, { status: 403 }) });
+    mount(<ProjectSettings slug="alpha" />);
+    const user = userEvent.setup();
+    const input = (await screen.findByRole('textbox', { name: 'Name' })) as HTMLInputElement;
+    await user.clear(input);
+    await user.type(input, 'Rejected');
+    await user.tab();
+    await waitFor(() => expect(input.value).toBe('Alpha'));
+  });
+
+  it('labels the executor default Done by', async () => {
+    mockFetch({ '/api/projects/alpha': tree });
+    mount(<ProjectSettings slug="alpha" />);
+    expect(await screen.findByRole('radiogroup', { name: 'Done by' })).toBeInTheDocument();
+    expect(screen.queryByText('Default executor')).toBeNull();
+  });
+
   it('archive asks first, then posts', async () => {
     const fn = mockFetch({ '/api/projects/alpha': tree, 'POST /api/archive': { ok: true } });
     mount(<ProjectSettings slug="alpha" />);

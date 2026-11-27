@@ -58,7 +58,8 @@ function Stepper({ label, onStep, children }: { label: string; onStep: (dir: 1 |
 }
 
 function reviewInfo(t: TaskDetail): { by: string; at: string } {
-  const e = t.events.find((x) => x.kind === 'status_changed' && (x.after as { status?: string } | null)?.status === 'review');
+  // Newest first: the event that put the task into review (a status change, or the task created in review).
+  const e = t.events.find((x) => (x.after as { status?: string } | null)?.status === 'review');
   return { by: e?.actor ?? 'Agent', at: e?.at ?? t.updatedAt };
 }
 

@@ -63,6 +63,14 @@ describe('TaskPane', () => {
     await waitFor(() => expect(bodies(fetchMock, 'POST', '/api/tasks/t1/review')).toEqual([{ decision: 'send_back', note: 'tests fail' }]));
   });
 
+  it('review bar names the actor of the event that set review, never Agent for you', async () => {
+    const events = [{ id: 'e1', kind: 'created', actor: 'you', entity: 'task', entityId: 't1', after: { status: 'review' }, before: null, at: '2026-11-26T09:00:00.000Z' }];
+    mount(<TaskPane taskId="t1" slug="acme" />, taskRoutes({ status: 'review', events: events as never }));
+    const bar = await screen.findByRole('region', { name: 'Review' });
+    expect(bar).toHaveTextContent('You');
+    expect(bar).not.toHaveTextContent('Agent');
+  });
+
   it('non-review task has no review bar', async () => {
     mount(<TaskPane taskId="t1" slug="acme" />, taskRoutes());
     await screen.findByLabelText('Title');
@@ -209,6 +217,17 @@ describe('NewTask', () => {
     );
   });
 
+  it('a double Enter creates one task', async () => {
+    const slow = { ...routes, 'POST /api/milestones/m1/tasks': async () => (await new Promise((r) => setTimeout(r, 30)), treeTask({ id: 'tNew' })) };
+    const { fetchMock } = mount(<NewTask slug="acme" milestoneId="m1" />, slow);
+    const title = screen.getByLabelText('Title');
+    fireEvent.change(title, { target: { value: 'Ship it' } });
+    fireEvent.keyDown(title, { key: 'Enter', ctrlKey: true });
+    fireEvent.keyDown(title, { key: 'Enter', ctrlKey: true });
+    await waitFor(() => expect(screen.getByTestId('search').textContent).toContain('task=tNew'));
+    expect(bodies(fetchMock, 'POST', '/api/milestones/m1/tasks')).toHaveLength(1);
+  });
+
   it('shows no request for an invalid date', () => {
     const { fetchMock } = mount(<NewTask slug="acme" milestoneId="m1" />, routes);
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'x' } });
@@ -259,5 +278,19 @@ describe('NewMilestone', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Active' }));
     fireEvent.click(screen.getByRole('button', { name: 'Create milestone' }));
     await waitFor(() => expect(bodies(f, 'POST', '/api/projects/acme/milestones')).toEqual([{ name: 'Beta', due: '2026-12-02', status: 'active' }]));
+  });
+});
+
+describe('NewMilestone', () => {
+  it('a double Enter creates one milestone', async () => {
+    const { fetchMock } = mount(<NewMilestone slug="acme" />, {
+      'POST /api/projects/acme/milestones': async () => (await new Promise((r) => setTimeout(r, 30)), { id: 'mNew' }),
+    });
+    const name = screen.getByLabelText('Name');
+    fireEvent.change(name, { target: { value: 'Beta' } });
+    fireEvent.keyDown(name, { key: 'Enter', ctrlKey: true });
+    fireEvent.keyDown(name, { key: 'Enter', ctrlKey: true });
+    await new Promise((r) => setTimeout(r, 80));
+    expect(bodies(fetchMock, 'POST', '/api/projects/acme/milestones')).toHaveLength(1);
   });
 });

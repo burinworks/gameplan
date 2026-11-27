@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { Router } from 'wouter';
 import { memoryLocation } from 'wouter/memory-location';
 import { describe, expect, it } from 'vitest';
@@ -32,22 +33,24 @@ const projects = [
   },
 ];
 
-function setup(path: string) {
+function setup(path: string, extra: Record<string, unknown> = {}) {
   mockFetch({
     '/api/projects': projects,
     '/api/inbox': { count: 4, items: [] },
     '/api/overview': { paused: [], archived: [], count: 5 },
     '/api/projects/mcp-pipe': { project: { id: 'p2', slug: 'mcp-pipe', name: 'MCP pipe', repo: null, github: 'acme/mcp-pipe', vaultNote: null }, milestones: [] },
-  });
-  const { hook } = memoryLocation({ path });
+    ...extra,
+  } as never);
+  const { hook, history } = memoryLocation({ path, record: true });
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  render(
     <QueryClientProvider client={qc}>
       <Router hook={hook}>
         <Sidebar onSearch={() => {}} onNewProject={() => {}} />
       </Router>
     </QueryClientProvider>,
   );
+  return { history };
 }
 
 describe('Sidebar', () => {
@@ -72,5 +75,16 @@ describe('Sidebar', () => {
     const links = screen.getAllByRole('link');
     expect(links[links.length - 1]).toHaveTextContent('Settings');
     expect(screen.getByRole('button', { name: 'MCP pipe menu' })).toHaveAttribute('aria-haspopup', 'menu');
+  });
+
+  it('archive goes Home only after the archive succeeded', async () => {
+    const { history } = setup('/p/mcp-pipe/timeline', { 'POST /api/archive': () => Response.json({ error: { code: 'forbidden', message: 'nope' } }, { status: 403 }) });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'MCP pipe menu' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Archive' }));
+    const sheet = screen.getByRole('dialog', { name: 'Archive MCP pipe?' });
+    await user.click(within(sheet).getByRole('button', { name: 'Archive' }));
+    await waitFor(() => expect(within(sheet).getByRole('button', { name: 'Archive' })).toBeEnabled());
+    expect(history?.at(-1)).toBe('/p/mcp-pipe/timeline');
   });
 });
