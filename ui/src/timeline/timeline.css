@@ -224,7 +224,7 @@
   box-shadow: var(--gp-riskRing), var(--gp-focus);
 }
 .tl-bar.is-link-target {
-  box-shadow: 0 0 0 2px var(--gp-accent);
+  box-shadow: var(--gp-focus);
 }
 .tl-bar.is-clipped-start {
   border-start-start-radius: 0;
@@ -239,10 +239,10 @@
 }
 @keyframes tl-highlight {
   from {
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--gp-accent) 55%, transparent);
+    box-shadow: var(--gp-focus);
   }
   to {
-    box-shadow: 0 0 0 3px transparent;
+    box-shadow: 0 0 0 0 transparent;
   }
 }
 
@@ -289,7 +289,6 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  width: var(--gp-s6);
   cursor: ew-resize;
 }
 .tl-edge-l {
@@ -320,7 +319,7 @@
   height: var(--gp-s8);
   border-radius: 50%;
   background: var(--gp-accent);
-  box-shadow: 0 0 0 2px var(--gp-card);
+  box-shadow: var(--gp-diamondHalo);
   opacity: 0;
   cursor: crosshair;
   touch-action: none;
@@ -337,21 +336,11 @@
   opacity: 1;
 }
 
-.tl-error {
-  margin: var(--gp-s8) 0 0;
-  font-size: var(--gp-fs-meta);
-  line-height: var(--gp-lh-meta);
-  color: var(--gp-risk);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .tl-bar,
   .tl-handle,
   .tl-chev,
   .tl-group {
     transition: none;
-  }
-  .tl-bar.is-changed {
-    animation: none;
   }
 }

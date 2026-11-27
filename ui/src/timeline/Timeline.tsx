@@ -1,7 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useHighlight } from '../api/live';
-import { errorLine } from '../lib/format';
 import {
   DAY_W,
   HEADER_H,
@@ -15,7 +14,8 @@ import {
   type Zoom,
 } from '../lib/timeline';
 import { Arrows, type ArrowPos } from './Arrows';
-import { useBarDrag, type Dates } from './useBarDrag';
+import { Icon } from '../ui/Icon';
+import { edgeZone, useBarDrag, type Dates } from './useBarDrag';
 import './timeline.css';
 
 export interface TLBar {
@@ -68,7 +68,7 @@ export interface TimelineProps {
   groups?: TLGroup[];
   onToggleGroup?: (groupId: string) => void;
   onOpen?: (barId: string) => void;
-  /** Reject to snap the bar back and show the error line. */
+  /** Reject to snap the bar back; the message comes from the shared error line, not the timeline. */
   onReschedule?: (barId: string, dates: Dates) => Promise<unknown> | void;
   onLink?: (fromId: string, toId: string) => void;
   labelWidth?: number;
@@ -81,7 +81,6 @@ export interface TimelineHandle {
 }
 
 const GROUP_H = 30;
-const ERROR_MS = 6000;
 const LINK_GAP = 18;
 
 type Item =
@@ -157,8 +156,8 @@ function BarView({
         {bar.kind !== 'draft' && bar.progress > 0 && (
           <span className="tl-progress" style={{ width: `${Math.min(100, Math.max(0, bar.progress))}%` }} />
         )}
-        {bar.draggable && <span className="tl-edge tl-edge-l" aria-hidden="true" />}
-        {bar.draggable && <span className="tl-edge tl-edge-r" aria-hidden="true" />}
+        {bar.draggable && <span className="tl-edge tl-edge-l" style={{ width: edgeZone(w) }} aria-hidden="true" />}
+        {bar.draggable && <span className="tl-edge tl-edge-r" style={{ width: edgeZone(w) }} aria-hidden="true" />}
         {fits && (
           <span className="tl-bar-label" data-label dir="auto" title={bar.label}>
             {bar.label}
@@ -192,9 +191,9 @@ function BarView({
 
 function Chevron({ open }: { open: boolean }) {
   return (
-    <svg className={open ? 'tl-chev is-open' : 'tl-chev'} viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M9 6l6 6-6 6" />
-    </svg>
+    <span className={open ? 'tl-chev is-open' : 'tl-chev'} aria-hidden="true">
+      <Icon name="chevron" size={14} />
+    </span>
   );
 }
 
@@ -224,8 +223,6 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
   const scroller = useRef<HTMLDivElement>(null);
   const plane = useRef<HTMLDivElement>(null);
   const [overrides, setOverrides] = useState<Record<string, Override>>({});
-  const [error, setError] = useState<string | null>(null);
-  const errTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const barsById = useMemo(() => {
     const m = new Map<string, TLBar>();
@@ -256,14 +253,6 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
     });
   }, [barsById]);
 
-  useEffect(() => () => clearTimeout(errTimer.current), []);
-
-  const showError = (msg: string) => {
-    setError(msg);
-    clearTimeout(errTimer.current);
-    errTimer.current = setTimeout(() => setError(null), ERROR_MS);
-  };
-
   const drag = useBarDrag({
     dayW,
     find: (id) => {
@@ -284,21 +273,18 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
       });
     },
     onCommit: (id, dates) => {
-      clearTimeout(errTimer.current);
-      setError(null);
       let p: Promise<unknown>;
       try {
         p = Promise.resolve(onReschedule?.(id, dates));
       } catch (e) {
         p = Promise.reject(e);
       }
-      p.catch((err: unknown) => {
+      p.catch(() => {
+        // Snap back only; the message is shown by the shared error line (mutation onError).
         setOverrides((cur) => {
           const { [id]: _drop, ...rest } = cur;
           return rest;
         });
-        const e = err as { code?: string; message?: string };
-        showError(errorLine({ code: e?.code ?? 'internal', message: e?.message ?? 'Could not save' }));
       });
     },
     onOpen,
@@ -459,11 +445,6 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
           </div>
         </div>
       </div>
-      {error && (
-        <p className="tl-error" role="alert" data-timeline-error>
-          {error}
-        </p>
-      )}
     </div>
   );
 });

@@ -70,7 +70,7 @@ describe('Timeline', () => {
     expect(onReschedule).toHaveBeenCalledWith('b1', { start: '2026-11-22', end: '2026-12-02' });
   });
 
-  it('snaps back and shows one error line when the write rejects', async () => {
+  it('snaps back when the write rejects, without a local error line', async () => {
     const onReschedule = vi.fn().mockRejectedValue(new ApiError('conflict', 'x', 409));
     setup(rowOf(bar()), { onReschedule });
     const before = el('b1').style.left;
@@ -79,7 +79,7 @@ describe('Timeline', () => {
     expect(el('b1').style.left).not.toBe(before);
     fireEvent.pointerUp(el('b1'), { clientX: 93 });
     await waitFor(() => expect(el('b1').style.left).toBe(before));
-    expect(screen.getByRole('alert')).toHaveTextContent('Changed since');
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('dragging the left edge resizes only the start', () => {
@@ -99,6 +99,19 @@ describe('Timeline', () => {
     fireEvent.pointerMove(el('b1'), { clientX: w - 2 + 17 });
     fireEvent.pointerUp(el('b1'), { clientX: w - 2 + 17 });
     expect(onReschedule).toHaveBeenCalledWith('b1', { start: '2026-11-20', end: '2026-12-01' });
+  });
+
+  it.each([['week' as const, 1], ['month' as const, 1], ['month' as const, 2]])('a short bar stays movable by pointer (%s, %i day)', (zoom, days) => {
+    const onReschedule = vi.fn().mockResolvedValue(undefined);
+    const end = days === 1 ? '2026-11-20' : '2026-11-21';
+    setup(rowOf(bar({ start: '2026-11-20', end })), { onReschedule, zoom });
+    const w = barGeom('2026-11-20', end, FROM, TO, DAY_W[zoom])!.w;
+    const mid = w / 2;
+    const dx = DAY_W[zoom] * 3;
+    fireEvent.pointerDown(el('b1'), { clientX: mid });
+    fireEvent.pointerMove(el('b1'), { clientX: mid + dx });
+    fireEvent.pointerUp(el('b1'), { clientX: mid + dx });
+    expect(onReschedule).toHaveBeenCalledWith('b1', { start: '2026-11-23', end: days === 1 ? '2026-11-23' : '2026-11-24' });
   });
 
   it('ignores drag and keys on a non-draggable bar', () => {
