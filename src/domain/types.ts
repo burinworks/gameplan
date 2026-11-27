@@ -1,10 +1,10 @@
 export const PROJECT_STATUS = ['active', 'paused', 'done', 'dropped'] as const;
 export const MILESTONE_STATUS = ['planned', 'active', 'done'] as const;
-export const TASK_STATUS = ['todo', 'doing', 'done', 'cancelled'] as const;
+export const TASK_STATUS = ['todo', 'doing', 'review', 'done', 'cancelled'] as const;
 export const PRIORITY = ['p1', 'p2', 'p3'] as const;
-export const EXECUTOR = ['manual', 'ai'] as const;
+export const EXECUTOR = ['manual', 'ai', 'together'] as const;
 export const ATTACHMENT_ROLE = ['context', 'deliverable'] as const;
-export const ATTACHMENT_KIND = ['commit', 'pr', 'file', 'link', 'note'] as const;
+export const ATTACHMENT_KIND = ['commit', 'pr', 'file', 'link', 'note', 'ticket'] as const;
 
 export type ProjectStatus = (typeof PROJECT_STATUS)[number];
 export type MilestoneStatus = (typeof MILESTONE_STATUS)[number];
@@ -14,7 +14,7 @@ export type Executor = (typeof EXECUTOR)[number];
 export type AttachmentRole = (typeof ATTACHMENT_ROLE)[number];
 export type AttachmentKind = (typeof ATTACHMENT_KIND)[number];
 
-export type EntityType = 'project' | 'area' | 'milestone' | 'task' | 'todo' | 'dependency' | 'attachment' | 'settings';
+export type EntityType = 'project' | 'area' | 'milestone' | 'task' | 'todo' | 'dependency' | 'attachment' | 'settings' | 'day_plan' | 'inbox';
 export type ArchivableEntity = 'project' | 'milestone' | 'task' | 'todo';
 export type ReorderEntity = 'milestone' | 'task' | 'todo' | 'area' | 'project';
 
@@ -34,6 +34,12 @@ export type EventKind =
   | 'restored'
   | 'planned'
   | 'settings_changed'
+  | 'review_accepted'
+  | 'review_sent_back'
+  | 'resume_noted'
+  | 'day_planned'
+  | 'captured'
+  | 'triaged'
   | 'reverted';
 
 /** Who is writing and why. `actor` is `you` (HTTP/UI) or `ai:<client>` (MCP). */
@@ -109,6 +115,26 @@ export interface Task {
   archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  resumeNote: string | null;
+  resumeAt: string | null;
+  resumeBy: string | null;
+}
+
+export interface DayPlanItem {
+  date: string;
+  taskId: string;
+  ord: number;
+  when: string | null;
+}
+
+export interface InboxItem {
+  id: string;
+  text: string;
+  actor: string;
+  createdAt: string;
+  triagedAt: string | null;
+  triagedTo: Record<string, unknown> | null;
+  archivedAt: string | null;
 }
 
 export interface Todo {
@@ -247,6 +273,21 @@ export const toTask = (r: Row): Task => ({
   archivedAt: s(r.archived_at),
   createdAt: String(r.created_at),
   updatedAt: String(r.updated_at),
+  resumeNote: s(r.resume_note),
+  resumeAt: s(r.resume_at),
+  resumeBy: s(r.resume_by),
+});
+
+export const toDayPlanItem = (r: Row): DayPlanItem => ({ date: String(r.date), taskId: String(r.task_id), ord: Number(r.ord), when: s(r.when_text) });
+
+export const toInboxItem = (r: Row): InboxItem => ({
+  id: String(r.id),
+  text: String(r.text),
+  actor: String(r.actor),
+  createdAt: String(r.created_at),
+  triagedAt: s(r.triaged_at),
+  triagedTo: json(r.triaged_to_json, null),
+  archivedAt: s(r.archived_at),
 });
 
 export const toTodo = (r: Row): Todo => ({

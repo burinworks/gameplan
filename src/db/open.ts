@@ -35,14 +35,25 @@ function migrate(db: DatabaseSync): void {
     .sort((a, b) => a.n - b.n);
   for (const { f, n } of files) {
     const sql = readFileSync(join(dir, f), 'utf8');
-    db.exec('BEGIN');
+    // Table rebuilds need FKs off; the pragma is a no-op inside a transaction, so it goes around it.
+    const fkOff = sql.split('\n', 1)[0]!.trim() === '-- gameplan: foreign_keys=off';
+    if (fkOff) db.exec('PRAGMA foreign_keys = OFF');
     try {
-      db.exec(sql);
-      db.exec(`PRAGMA user_version = ${n}`);
-      db.exec('COMMIT');
-    } catch (err) {
-      db.exec('ROLLBACK');
-      throw new Error(`migration ${f} failed: ${(err as Error).message}`);
+      db.exec('BEGIN');
+      try {
+        db.exec(sql);
+        db.exec(`PRAGMA user_version = ${n}`);
+        if (fkOff) {
+          const bad = db.prepare('PRAGMA foreign_key_check').all() as { table: string }[];
+          if (bad.length) throw new Error(`foreign key violations in ${[...new Set(bad.map((b) => b.table))].join(', ')}`);
+        }
+        db.exec('COMMIT');
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw new Error(`migration ${f} failed: ${(err as Error).message}`);
+      }
+    } finally {
+      if (fkOff) db.exec('PRAGMA foreign_keys = ON');
     }
   }
 }
