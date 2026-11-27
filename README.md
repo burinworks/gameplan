@@ -33,6 +33,16 @@ Remove it with `scripts/install-launchd.sh --uninstall`. Logs: `~/Library/Logs/g
 | `GAMEPLAN_PORT` | `4747` |
 | `GAMEPLAN_DB` | `~/Library/Application Support/Gameplan/gameplan.db` |
 
+## UI
+
+Build once with `npm run build`, then `npm run dev` serves the app at `http://127.0.0.1:4747/`.
+
+For UI work run `npm run dev` and `npm run dev:ui` together and open `http://localhost:5173` (Vite proxies `/api` and `/events` to the engine).
+
+The engine only answers local hosts (`127.0.0.1`, `localhost`, `[::1]`) and rejects cross-site browser writes; `/mcp` is guarded by the optional token instead.
+
+End-to-end smoke tests (Chromium against a seeded temporary engine, light and dark): `npm run e2e`. Screenshots land in `test-results/screens/`. The first run needs `npx playwright install chromium`.
+
 ## Connect an agent
 
 Claude Code:
