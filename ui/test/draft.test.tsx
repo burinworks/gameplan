@@ -51,4 +51,27 @@ describe('useDraft', () => {
     rerender(<Field server="two" save={() => {}} />);
     expect((screen.getByLabelText('f') as HTMLInputElement).value).toBe('two');
   });
+
+  it('untouched focus: server changes, blur -> no save, shows the new server value', () => {
+    const save = vi.fn();
+    const { rerender } = render(<Field server="one" save={save} />);
+    const input = screen.getByLabelText('f') as HTMLInputElement;
+    fireEvent.focus(input);
+    rerender(<Field server="zzz" save={save} />);
+    fireEvent.blur(input);
+    expect(save).not.toHaveBeenCalled();
+    expect(input.value).toBe('zzz');
+  });
+
+  it('Enter then blur saves once', () => {
+    const save = vi.fn();
+    render(<Field server="one" save={save} />);
+    const input = screen.getByLabelText('f') as HTMLInputElement;
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: 'abc' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.blur(input);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(input.value).toBe('abc');
+  });
 });

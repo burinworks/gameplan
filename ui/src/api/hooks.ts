@@ -1,5 +1,6 @@
 import { QueryClient, useMutation, useQuery } from '@tanstack/react-query';
 import { useSyncExternalStore } from 'react';
+import { errorLine } from '../lib/format';
 import { api, ApiError } from './client';
 import type {
   Attachment,
@@ -26,11 +27,14 @@ import type {
 
 // ---------- shared error line ----------
 
-let errorLine: string | null = null;
+let errorText: string | null = null;
+let errorTimer: ReturnType<typeof setTimeout> | undefined;
 const errorSubs = new Set<() => void>();
 /** Set (or clear with null) the message shown in the shared error line. */
 export function setErrorLine(message: string | null): void {
-  errorLine = message;
+  errorText = message;
+  clearTimeout(errorTimer);
+  if (message) errorTimer = setTimeout(() => setErrorLine(null), 6000);
   errorSubs.forEach((f) => f());
 }
 export const useErrorLine = (): string | null =>
@@ -39,9 +43,10 @@ export const useErrorLine = (): string | null =>
       errorSubs.add(f);
       return () => void errorSubs.delete(f);
     },
-    () => errorLine,
+    () => errorText,
   );
-const onError = (e: Error) => setErrorLine(e.message);
+const onError = (e: Error) => setErrorLine(errorLine(e instanceof ApiError ? e : { code: 'internal', message: e.message }));
+const mut = { onError, onSuccess: () => setErrorLine(null) };
 
 export function createQueryClient(): QueryClient {
   return new QueryClient({
@@ -57,7 +62,13 @@ export function createQueryClient(): QueryClient {
 
 // ---------- reads ----------
 
-export const useHome = () => useQuery({ queryKey: ['home'], queryFn: () => api<Home>('GET', '/api/home') });
+export const useHome = () =>
+  useQuery({
+    queryKey: ['home'],
+    queryFn: () => api<Home>('GET', '/api/home'),
+    // While the engine is unreachable, keep probing so the UI recovers on its own.
+    refetchInterval: (q) => (q.state.error instanceof ApiError && q.state.error.code === 'network' ? 3000 : false),
+  });
 
 export const useTimeline = (from?: string, to?: string) =>
   useQuery({
@@ -155,7 +166,7 @@ export interface CreateProjectBody {
   template?: string;
   startDate?: string;
 }
-export const useCreateProject = () => useMutation({ mutationFn: (b: CreateProjectBody) => api<Project>('POST', '/api/projects', b), onError });
+export const useCreateProject = () => useMutation({ mutationFn: (b: CreateProjectBody) => api<Project>('POST', '/api/projects', b), ...mut });
 
 export interface ConfigureProjectBody {
   name?: string;
@@ -170,7 +181,7 @@ export interface ConfigureProjectBody {
   labels?: string[];
 }
 export const useConfigureProject = () =>
-  useMutation({ mutationFn: (v: { slug: string; patch: ConfigureProjectBody }) => api<Project>('PATCH', `/api/projects/${encodeURIComponent(v.slug)}`, v.patch), onError });
+  useMutation({ mutationFn: (v: { slug: string; patch: ConfigureProjectBody }) => api<Project>('PATCH', `/api/projects/${encodeURIComponent(v.slug)}`, v.patch), ...mut });
 
 export interface MilestoneBody {
   name: string;
@@ -179,9 +190,9 @@ export interface MilestoneBody {
   description?: string | null;
 }
 export const useCreateMilestone = () =>
-  useMutation({ mutationFn: (v: { slug: string; body: MilestoneBody }) => api<Milestone>('POST', `/api/projects/${encodeURIComponent(v.slug)}/milestones`, v.body), onError });
+  useMutation({ mutationFn: (v: { slug: string; body: MilestoneBody }) => api<Milestone>('POST', `/api/projects/${encodeURIComponent(v.slug)}/milestones`, v.body), ...mut });
 export const useUpdateMilestone = () =>
-  useMutation({ mutationFn: (v: { id: string; patch: Partial<MilestoneBody> }) => api<Milestone>('PATCH', `/api/milestones/${encodeURIComponent(v.id)}`, v.patch), onError });
+  useMutation({ mutationFn: (v: { id: string; patch: Partial<MilestoneBody> }) => api<Milestone>('PATCH', `/api/milestones/${encodeURIComponent(v.id)}`, v.patch), ...mut });
 
 export interface TaskBody {
   title: string;
@@ -201,11 +212,11 @@ export interface CreateTaskBody extends TaskBody {
   links?: { url: string; title?: string; kind?: Attachment['kind'] }[];
 }
 export const useCreateTask = () =>
-  useMutation({ mutationFn: (v: { milestoneId: string; body: CreateTaskBody }) => api<Task>('POST', `/api/milestones/${encodeURIComponent(v.milestoneId)}/tasks`, v.body), onError });
+  useMutation({ mutationFn: (v: { milestoneId: string; body: CreateTaskBody }) => api<Task>('POST', `/api/milestones/${encodeURIComponent(v.milestoneId)}/tasks`, v.body), ...mut });
 export const useUpdateTask = () =>
   useMutation({
     mutationFn: (v: { id: string; patch: Partial<TaskBody> & { milestoneId?: string } }) => api<Task>('PATCH', `/api/tasks/${encodeURIComponent(v.id)}`, v.patch),
-    onError,
+    ...mut,
   });
 
 /** Always sends cascade:false. */
@@ -213,50 +224,50 @@ export const useReschedule = () =>
   useMutation({
     mutationFn: (v: { id: string; start: string; end: string; reason?: string }) =>
       api<unknown>('POST', `/api/tasks/${encodeURIComponent(v.id)}/reschedule`, { start: v.start, end: v.end, reason: v.reason, cascade: false }),
-    onError,
+    ...mut,
   });
 
 export const useReview = () =>
   useMutation({
     mutationFn: (v: { id: string; decision: 'accept' | 'send_back'; note?: string | null }) =>
       api<Task>('POST', `/api/tasks/${encodeURIComponent(v.id)}/review`, { decision: v.decision, note: v.note }),
-    onError,
+    ...mut,
   });
 
 export const useSetResume = () =>
-  useMutation({ mutationFn: (v: { id: string; note: string | null }) => api<Task>('PUT', `/api/tasks/${encodeURIComponent(v.id)}/resume`, { note: v.note }), onError });
+  useMutation({ mutationFn: (v: { id: string; note: string | null }) => api<Task>('PUT', `/api/tasks/${encodeURIComponent(v.id)}/resume`, { note: v.note }), ...mut });
 
 export const usePlanDay = () =>
   useMutation({
     mutationFn: (v: { date: string; items: { taskId: string; when?: string | null }[] }) => api<DayPlanRow[]>('PUT', `/api/day-plan/${v.date}`, { items: v.items }),
-    onError,
+    ...mut,
   });
 
-export const useCapture = () => useMutation({ mutationFn: (text: string) => api<InboxItem>('POST', '/api/inbox', { text }), onError });
+export const useCapture = () => useMutation({ mutationFn: (text: string) => api<InboxItem>('POST', '/api/inbox', { text }), ...mut });
 
 export type TriageTarget = { as: 'task'; milestoneId: string; task?: Partial<CreateTaskBody> } | { as: 'todo'; taskId: string } | { as: 'dismiss' };
 export const useTriage = () =>
   useMutation({
     mutationFn: (v: { id: string; to: TriageTarget }) =>
       api<{ item: InboxItem; created?: { entity: 'task' | 'todo'; id: string } }>('POST', `/api/inbox/${encodeURIComponent(v.id)}/triage`, v.to),
-    onError,
+    ...mut,
   });
 
 export const useAddTodos = () =>
   useMutation({
     mutationFn: (v: { taskId: string; todos: { title: string; after?: number[] }[] }) => api<Todo[]>('POST', `/api/tasks/${encodeURIComponent(v.taskId)}/todos`, { todos: v.todos }),
-    onError,
+    ...mut,
   });
 
 export const usePatchTodo = () =>
   useMutation({
     mutationFn: (v: { id: string; patch: { done?: boolean; title?: string; after?: string[] } }) => api<Todo>('PATCH', `/api/todos/${encodeURIComponent(v.id)}`, v.patch),
-    onError,
+    ...mut,
   });
 
 export type ReorderEntity = 'milestone' | 'task' | 'todo' | 'area' | 'project';
 export const useReorder = () =>
-  useMutation({ mutationFn: (v: { entity: ReorderEntity; ids: string[] }) => api<{ ok: true }>('POST', '/api/reorder', v), onError });
+  useMutation({ mutationFn: (v: { entity: ReorderEntity; ids: string[] }) => api<{ ok: true }>('POST', '/api/reorder', v), ...mut });
 
 export const useAttach = () =>
   useMutation({
@@ -264,27 +275,27 @@ export const useAttach = () =>
       const { taskId, ...body } = v;
       return api<Attachment>('POST', `/api/tasks/${encodeURIComponent(taskId)}/attachments`, body);
     },
-    onError,
+    ...mut,
   });
-export const useDetach = () => useMutation({ mutationFn: (id: string) => api<{ ok: true }>('DELETE', `/api/attachments/${encodeURIComponent(id)}`), onError });
+export const useDetach = () => useMutation({ mutationFn: (id: string) => api<{ ok: true }>('DELETE', `/api/attachments/${encodeURIComponent(id)}`), ...mut });
 
 export const useAddDependency = () =>
   useMutation({
     mutationFn: (v: { fromTaskId: string; taskId?: string; milestoneId?: string }) => api<unknown>('POST', '/api/dependencies', v),
-    onError,
+    ...mut,
   });
-export const useRemoveDependency = () => useMutation({ mutationFn: (id: string) => api<{ ok: true }>('DELETE', `/api/dependencies/${encodeURIComponent(id)}`), onError });
+export const useRemoveDependency = () => useMutation({ mutationFn: (id: string) => api<{ ok: true }>('DELETE', `/api/dependencies/${encodeURIComponent(id)}`), ...mut });
 
 export type ArchivableEntity = 'project' | 'milestone' | 'task' | 'todo';
 export const useArchive = () =>
-  useMutation({ mutationFn: (v: { entity: ArchivableEntity; id: string }) => api<{ ok: true }>('POST', '/api/archive', v), onError });
+  useMutation({ mutationFn: (v: { entity: ArchivableEntity; id: string }) => api<{ ok: true }>('POST', '/api/archive', v), ...mut });
 export const useRestore = () =>
-  useMutation({ mutationFn: (v: { entity: ArchivableEntity; id: string }) => api<{ ok: true }>('POST', '/api/restore', v), onError });
+  useMutation({ mutationFn: (v: { entity: ArchivableEntity; id: string }) => api<{ ok: true }>('POST', '/api/restore', v), ...mut });
 
-export const useRevert = () => useMutation({ mutationFn: (eventId: string) => api<unknown>('POST', `/api/events/${encodeURIComponent(eventId)}/revert`), onError });
+export const useRevert = () => useMutation({ mutationFn: (eventId: string) => api<unknown>('POST', `/api/events/${encodeURIComponent(eventId)}/revert`), ...mut });
 
 export const usePatchSettings = () =>
-  useMutation({ mutationFn: (patch: Partial<Omit<PublicSettings, 'mcp_token_set'>> & Record<string, unknown>) => api<PublicSettings>('PATCH', '/api/settings', patch), onError });
+  useMutation({ mutationFn: (patch: Partial<Omit<PublicSettings, 'mcp_token_set'>> & Record<string, unknown>) => api<PublicSettings>('PATCH', '/api/settings', patch), ...mut });
 
 export const useBackupNow = () =>
-  useMutation({ mutationFn: () => api<{ last: { file: string; at: string } | null }>('POST', '/api/backup'), onError });
+  useMutation({ mutationFn: () => api<{ last: { file: string; at: string } | null }>('POST', '/api/backup'), ...mut });

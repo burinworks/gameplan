@@ -10,7 +10,8 @@ import { applyTheme } from './theme';
 applyTheme({ appearance: 'system', accent: '#2F6BF0' });
 
 const queryClient = createQueryClient();
-startLive(queryClient);
+const stopLive = startLive(queryClient);
+import.meta.hot?.dispose(stopLive);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

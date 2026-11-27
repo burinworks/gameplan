@@ -1,9 +1,12 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { useSyncExternalStore } from 'react';
-import { api } from './client';
+import { setErrorLine, useHome } from './hooks';
+import { errorLine } from '../lib/format';
+import { api, ApiError } from './client';
 import type { EventRow } from './types';
 
 interface ESLike {
+  readyState?: number;
   addEventListener(type: string, cb: (e: { data?: string }) => void): void;
   close(): void;
 }
@@ -34,11 +37,14 @@ function store<S>(initial: S) {
   };
 }
 
-const engine = store(true);
 const highlights = store<ReadonlySet<string>>(new Set());
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 
-export const useEngineUp = (): boolean => useSyncExternalStore(engine.subscribe, engine.get);
+/** The engine is down only while `/api/home` fails with a network error (not on a bare SSE blip). */
+export function useEngineUp(): boolean {
+  const q = useHome();
+  return !(q.isError && q.error instanceof ApiError && q.error.code === 'network');
+}
 export const useHighlight = (entityId: string): boolean =>
   useSyncExternalStore(highlights.subscribe, () => highlights.get().has(entityId));
 
@@ -74,41 +80,66 @@ export async function undoLast(): Promise<void> {
   const id = undoStack.pop();
   if (!id) return;
   lastBatch = null;
-  await api('POST', `/api/events/${encodeURIComponent(id)}/revert`);
+  try {
+    await api('POST', `/api/events/${encodeURIComponent(id)}/revert`);
+  } catch (e) {
+    if (e instanceof ApiError) {
+      if (e.code === 'network') stack.push(id);
+      setErrorLine(errorLine(e));
+    }
+  }
 }
+
+const BACKOFF = [1000, 2000, 5000];
 
 export function startLive(qc: QueryClient, opts: LiveOptions = {}): () => void {
   const { url = '/events', debounceMs = 150 } = opts;
   const ES = opts.EventSource ?? (globalThis.EventSource as unknown as ESCtor);
-  const es = new ES(url);
+  let es: ESLike;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let hadError = false;
+  let attempt = 0;
+  let stopped = false;
 
-  es.addEventListener('change', (m) => {
-    try {
-      const e = JSON.parse(m.data ?? '') as EventRow;
-      if (e.actor !== 'you') flash(e.entityId);
-      undoStack.push(e);
-    } catch {
-      /* malformed event: still refresh below */
-    }
-    clearTimeout(timer);
-    timer = setTimeout(() => void qc.invalidateQueries(), debounceMs);
-  });
-  es.addEventListener('ready', () => {
-    engine.set(true);
-    if (hadError) {
-      hadError = false;
-      void qc.invalidateQueries();
-    }
-  });
-  es.addEventListener('error', () => {
-    hadError = true;
-    engine.set(false);
-  });
+  function connect() {
+    const cur = (es = new ES(url));
+    cur.addEventListener('change', (m) => {
+      try {
+        const e = JSON.parse(m.data ?? '') as EventRow;
+        if (e.actor !== 'you') flash(e.entityId);
+        undoStack.push(e);
+      } catch {
+        /* malformed event: still refresh below */
+      }
+      clearTimeout(timer);
+      timer = setTimeout(() => void qc.invalidateQueries(), debounceMs);
+    });
+    cur.addEventListener('ready', () => {
+      attempt = 0;
+      if (hadError) {
+        hadError = false;
+        void qc.invalidateQueries();
+      }
+    });
+    cur.addEventListener('error', () => {
+      hadError = true;
+      // Probe the engine; the down bar follows /api/home, not the stream.
+      void qc.invalidateQueries({ queryKey: ['home'] });
+      if (cur.readyState === 2 && !stopped) {
+        // The browser gave up on this stream (e.g. a proxy 502): reopen it ourselves.
+        cur.close();
+        clearTimeout(retryTimer);
+        retryTimer = setTimeout(connect, BACKOFF[Math.min(attempt++, BACKOFF.length - 1)]);
+      }
+    });
+  }
+  connect();
 
   return () => {
+    stopped = true;
     clearTimeout(timer);
+    clearTimeout(retryTimer);
     es.close();
   };
 }
