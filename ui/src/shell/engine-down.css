@@ -1,0 +1,29 @@
+.gp-engine-down {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gp-s12);
+  height: var(--gp-row);
+  padding: 0 var(--gp-s16);
+  flex: none;
+  background: var(--gp-panelSolid);
+  color: var(--gp-risk);
+  border-bottom: 1px solid var(--gp-edge);
+  font-size: var(--gp-fs-small);
+  line-height: var(--gp-lh-small);
+  font-weight: var(--gp-fw-medium);
+}
+.gp-engine-down button {
+  height: var(--gp-control);
+  padding: 0 var(--gp-s10);
+  border: 1px solid var(--gp-field);
+  border-radius: var(--gp-r3);
+  background: var(--gp-pill);
+  color: var(--gp-text);
+  font: inherit;
+  cursor: pointer;
+}
+.gp-engine-down button:focus-visible {
+  outline: 2px solid var(--gp-accent);
+  outline-offset: 1px;
+}
