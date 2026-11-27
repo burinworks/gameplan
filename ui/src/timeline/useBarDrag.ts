@@ -6,6 +6,9 @@ export type Dates = { start: string; end: string };
 type Mode = 'move' | 'start' | 'end';
 
 const EDGE_PX = 6;
+
+/** Edge zone width: 6px, shrinking on narrow bars so the move zone is at least half the bar. */
+export const edgeZone = (barW: number): number => Math.min(EDGE_PX, Math.floor(barW / 4));
 const MOVE_THRESHOLD_PX = 3;
 
 export interface DragBarInfo {
@@ -72,7 +75,8 @@ export function useBarDrag(opts: UseBarDragOpts) {
     const info = o.current.find(id);
     if (!info?.draggable) return;
     const local = e.clientX - e.currentTarget.getBoundingClientRect().left;
-    const mode: Mode = local <= EDGE_PX ? 'start' : local >= width - EDGE_PX ? 'end' : 'move';
+    const edge = edgeZone(width);
+    const mode: Mode = local < edge ? 'start' : local > width - edge ? 'end' : 'move';
     const a: Active = { id, mode, startX: e.clientX, orig: { start: info.start, end: info.end }, moved: false, last: null };
     active.current = a;
 
