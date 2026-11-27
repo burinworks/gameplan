@@ -1,0 +1,38 @@
+.gp-window {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--gp-r16);
+}
+.gp-app {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+.gp-card {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  margin: var(--gp-s8) var(--gp-s8) var(--gp-s8) 0;
+  border-radius: var(--gp-r12);
+  overflow: hidden;
+  background: var(--gp-card);
+  box-shadow: var(--gp-hairline);
+}
+.gp-main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--gp-s24) var(--gp-s32);
+}
+.gp-errorline {
+  margin-bottom: var(--gp-s12);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--gp-fs-meta);
+  line-height: var(--gp-lh-meta);
+  font-weight: var(--gp-fw-medium);
+  color: var(--gp-risk);
+}

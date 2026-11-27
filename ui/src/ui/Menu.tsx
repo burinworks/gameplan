@@ -1,0 +1,96 @@
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+
+export interface MenuItem {
+  label: string;
+  onSelect?: () => void;
+  /** Renders a plain link opening in a new tab instead of calling onSelect. */
+  href?: string;
+  danger?: boolean;
+}
+
+export interface MenuProps {
+  /** Content of the trigger button (usually an <Icon/>). */
+  trigger: ReactNode;
+  /** aria-label of the trigger button. */
+  label: string;
+  items: MenuItem[];
+}
+
+export function Menu({ trigger, label, items }: MenuProps) {
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const open = pos !== null;
+
+  const close = (refocus = true) => {
+    setPos(null);
+    if (refocus) btn.current?.focus();
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    list.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    const down = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (!list.current?.contains(t) && !btn.current?.contains(t)) setPos(null);
+    };
+    document.addEventListener('mousedown', down);
+    return () => document.removeEventListener('mousedown', down);
+  }, [open]);
+
+  const toggle = () => {
+    if (open) return close();
+    const r = btn.current!.getBoundingClientRect();
+    setPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+  };
+
+  const onKeyDown = (e: KeyboardEvent) => {
+    const els = [...(list.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
+    const i = els.indexOf(document.activeElement as HTMLElement);
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      e.preventDefault();
+      close();
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const d = e.key === 'ArrowDown' ? 1 : -1;
+      els[(i + d + els.length) % els.length]?.focus();
+    } else if (e.key === 'Tab') close(false);
+  };
+
+  return (
+    <>
+      <button ref={btn} type="button" className="gp-btn gp-btn--icon" aria-label={label} aria-haspopup="menu" aria-expanded={open} onClick={toggle}>
+        {trigger}
+      </button>
+      {open &&
+        createPortal(
+          <div ref={list} className="gp-menu" role="menu" aria-label={label} style={{ top: pos.top, right: pos.right }} onKeyDown={onKeyDown}>
+            {items.map((it) =>
+              it.href ? (
+                <a key={it.label} role="menuitem" className="gp-menu__item" href={it.href} target="_blank" rel="noopener noreferrer" tabIndex={-1} onClick={() => close(false)}>
+                  {it.label}
+                </a>
+              ) : (
+                <button
+                  key={it.label}
+                  type="button"
+                  role="menuitem"
+                  tabIndex={-1}
+                  className={`gp-menu__item${it.danger ? ' is-danger' : ''}`}
+                  onClick={() => {
+                    close(false);
+                    it.onSelect?.();
+                  }}
+                >
+                  {it.label}
+                </button>
+              ),
+            )}
+          </div>,
+          document.body,
+        )}
+    </>
+  );
+}
