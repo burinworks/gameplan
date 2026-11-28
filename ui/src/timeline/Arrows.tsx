@@ -1,4 +1,4 @@
-import { arrowPath } from '../lib/timeline';
+import { ROW_PITCH, arrowPath } from '../lib/timeline';
 
 export interface ArrowPos {
   x: number;
@@ -20,12 +20,15 @@ export function Arrows({
   pos,
   width,
   height,
+  pitch = ROW_PITCH,
   pending,
 }: {
   links: ArrowLink[];
   pos: Map<string, ArrowPos>;
   width: number;
   height: number;
+  /** Row pitch, for routing a link between bars on the same line. */
+  pitch?: number;
   pending?: { fromId: string; x: number; y: number; target: string | null } | null;
 }) {
   const from = pending ? pos.get(pending.fromId) : undefined;
@@ -40,7 +43,7 @@ export function Arrows({
         return (
           <g key={`${l.fromId}>${l.toId}`} data-link={`${l.fromId}>${l.toId}`} data-bad={l.bad || undefined}>
             <path
-              d={arrowPath({ x2: a.x + a.w, y: a.y }, { x1: b.x, y: b.y })}
+              d={arrowPath({ x2: a.x + a.w, y: a.y }, { x1: b.x, y: b.y }, pitch)}
               stroke={stroke}
               strokeWidth={1.3}
               strokeLinejoin="round"

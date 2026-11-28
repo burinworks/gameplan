@@ -250,4 +250,34 @@ describe('Timeline', () => {
     const sc = document.querySelector('[data-timeline-scroll]') as HTMLElement;
     expect(sc.scrollLeft).toBeGreaterThan(0);
   });
+
+  it('project variant: wider label column, group row with due text and a diamond at the due date', () => {
+    const rows: TLRow[] = [{ id: 'r', label: 'Task', meta: 'Nov 25', group: 'g', bars: [bar()] }];
+    const { container } = setup(rows, {
+      variant: 'project',
+      groups: [{ id: 'g', label: 'M4 · Launch', collapsed: false, due: 'Dec 12', mark: { id: 'm', date: '2026-12-12', color: '#6E7CF5', risk: false } }],
+    });
+    expect((container.querySelector('.tl-labels') as HTMLElement).style.width).toBe('236px');
+    expect(container.querySelector('.tl-group-due')?.textContent).toBe('Dec 12');
+    const d = container.querySelector('[data-milestone="m"]') as HTMLElement;
+    expect(d.style.left).toBe(`${26 * 13 + 6.5}px`);
+    expect((container.querySelector('.tl') as HTMLElement).style.getPropertyValue('--tl-pitch')).toBe('40px');
+  });
+
+  it('a group with no rows still shows its header', () => {
+    setup([], { variant: 'project', groups: [{ id: 'g', label: 'Empty one', collapsed: false }] });
+    expect(screen.getByRole('button', { name: 'Empty one' })).toBeInTheDocument();
+  });
+
+  it('keeps the grid with no rows and lays the empty content over it', () => {
+    const { container } = setup([], { empty: <p>nothing here</p> });
+    expect(screen.getByText('nothing here')).toBeInTheDocument();
+    expect(container.querySelectorAll('.tl-tick').length).toBeGreaterThan(3);
+    expect(container.querySelector('.tl-weekend')).not.toBeNull();
+  });
+
+  it('day zoom draws a tick per day', () => {
+    const { container } = setup(rowOf(bar()), { zoom: 'day', to: '2026-11-30' });
+    expect(container.querySelectorAll('.tl-tick')).toHaveLength(15);
+  });
 });

@@ -1,10 +1,13 @@
 import { useMemo, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import { useCapture, useHome, useSettings, useTimeline } from '../../api/hooks';
+import { useAppActions } from '../../app/appActions';
 import { paths } from '../../app/routes';
+import { useHighlight } from '../../api/live';
 import { fmtActor, fmtActorAt, fmtAgo, fmtHeaderDate, fmtRange, fmtTodos } from '../../lib/format';
+import { weekStartOf } from '../../lib/timeline';
 import { Timeline, type TLRow } from '../../timeline/Timeline';
-import { Button, Chip, Field, Icon, Panel, Row } from '../../ui';
+import { Button, Chip, EmptyState, Field, Icon, Panel, Row } from '../../ui';
 import { PlanPicker } from './PlanPicker';
 import './home.css';
 
@@ -13,19 +16,64 @@ function addDays(d: string, n: number): string {
   return new Date(Date.UTC(y!, m! - 1, day! + n)).toISOString().slice(0, 10);
 }
 
-const MAX_CHIPS = 6;
+const MAX_CHIPS = 4;
+
+type PlanItem = NonNullable<ReturnType<typeof useHome>['data']>['plan'][number];
+
+/** One planned task: number badge, title with the project inline, the resume note, and the "when" pill. */
+function PlanRow({ p, onOpen }: { p: PlanItem; onOpen: () => void }) {
+  const changed = useHighlight(p.task.id);
+  return (
+    <div
+      className={`home__plan${changed ? ' is-changed' : ''}`}
+      data-testid="plan-row"
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+    >
+      <span className="home__badge num" data-testid="plan-n" style={{ ['--badge' as string]: p.task.color ?? 'var(--gp-text3)' }}>
+        {p.n}
+      </span>
+      <span className="home__plantext">
+        <span className="home__planline">
+          <span className="home__plantitle" dir="auto" title={p.task.title}>
+            {p.task.title}
+          </span>
+          <span className="home__planproject" dir="auto">
+            {p.task.projectName}
+          </span>
+        </span>
+        {p.resume && (
+          <span className="home__plannext" dir="auto">
+            {`↳ ${p.resume.note}`}
+          </span>
+        )}
+      </span>
+      {p.when && <span className="home__when">{p.when}</span>}
+    </div>
+  );
+}
 
 export function Home() {
   const home = useHome();
   const settings = useSettings();
   const capture = useCapture();
   const [, navigate] = useLocation();
+  const { openNewProject } = useAppActions();
   const [text, setText] = useState('');
   const [planning, setPlanning] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const today = home.data?.today;
-  const from = today ? addDays(today, -10) : undefined;
+  const weekStart = settings.data?.week_start === 'sun' ? 'sun' : 'mon';
+  // Start on a week boundary, one week before the current one, so every column is a full labelled week.
+  const from = today ? addDays(weekStartOf(today, weekStart), -7) : undefined;
   const to = today ? addDays(today, 45) : undefined;
   const tl = useTimeline(from, to);
 
@@ -88,40 +136,19 @@ export function Home() {
           <section className="gp-panel" aria-label="My plan">
             <div className="home__planhead">
               <h2 className="gp-panel__title">My plan</h2>
-              <Button variant="quiet" label="Plan my day" onClick={() => setPlanning(true)} />
+              {h.plan.length > 0 && <Button variant="quiet" label="Plan my day" onClick={() => setPlanning(true)} />}
             </div>
-            {h.plan.map((p) => (
-              <div
-                key={p.task.id}
-                className="gp-rowitem is-clickable"
-                data-testid="plan-row"
-                role="button"
-                tabIndex={0}
-                onClick={() => open(p.task.project, p.task.id)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    open(p.task.project, p.task.id);
-                  }
-                }}
-              >
-                <span className="home__badge num" data-testid="plan-n" style={{ ['--badge' as string]: p.task.color ?? 'var(--gp-text3)' }}>
-                  {p.n}
-                </span>
-                <span className="gp-rowitem__text">
-                  <span className="gp-rowitem__title" dir="auto" title={p.task.title}>
-                    {p.task.title}
-                  </span>
-                  <span className="gp-rowitem__meta" dir="auto">
-                    {p.resume ? `${p.task.projectName} · ↳ ${p.resume.note}` : p.task.projectName}
-                  </span>
-                </span>
-                {p.when && <Chip>{p.when}</Chip>}
-              </div>
-            ))}
+            {h.plan.length === 0 ? (
+              <EmptyState
+                title="Nothing planned for today"
+                action={{ label: 'Plan my day', onClick: () => setPlanning(true) }}
+              />
+            ) : (
+              h.plan.map((p) => <PlanRow key={p.task.id} p={p} onOpen={() => open(p.task.project, p.task.id)} />)
+            )}
 
             {h.pickUp.length > 0 && (
-              <>
+              <div className="home__pick">
                 <h3 className="home__sub">Pick up where you left off</h3>
                 {h.pickUp.map((p) => (
                   <Row
@@ -134,7 +161,7 @@ export function Home() {
                     highlightId={p.task.id}
                   />
                 ))}
-              </>
+              </div>
             )}
 
             {h.alsoToday.length > 0 && (
@@ -203,33 +230,46 @@ export function Home() {
           Done this week
           <span className="gp-count gp-count--ok num">{h.doneThisWeek.count}</span>
         </h2>
-        <div className="home__chips">
-          {h.doneThisWeek.items.slice(0, MAX_CHIPS).map((d) => (
-            <button key={d.id} type="button" className="home__chipbtn" onClick={() => open(d.project, d.id)} title={d.title}>
-              <Chip tone="ok">
-                <Icon name="check" size={11} />
-                <span dir="auto">{d.title}</span>
-              </Chip>
-            </button>
-          ))}
-          {overflow > 0 && <Chip>{`+${overflow}`}</Chip>}
-        </div>
+        {h.doneThisWeek.count === 0 ? (
+          <span className="home__donenone">Nothing finished yet this week</span>
+        ) : (
+          <div className="home__chips">
+            {h.doneThisWeek.items.slice(0, MAX_CHIPS).map((d) => (
+              <button key={d.id} type="button" className="home__chipbtn" onClick={() => open(d.project, d.id)} title={d.title}>
+                <Chip tone="ok">
+                  <Icon name="check" size={11} />
+                  <span dir="auto">{d.title}</span>
+                </Chip>
+              </button>
+            ))}
+            {overflow > 0 && <span className="home__more">{`+${overflow}`}</span>}
+          </div>
+        )}
       </section>
 
-      <section className="gp-panel home__timeline" aria-label="Timeline">
+      <section className="gp-panel home__timeline tl-host" aria-label="Timeline">
         <Timeline
           rows={rows}
           from={from}
           to={to}
           today={h.today}
           zoom="week"
-          weekStart={settings.data?.week_start === 'sun' ? 'sun' : 'mon'}
+          weekStart={weekStart}
           showWeekends={settings.data?.show_weekends ?? true}
           onOpen={(id) => {
             const slug = byMilestone.get(id);
             if (slug) navigate(paths.project(slug));
           }}
           initialScrollToToday
+          empty={
+            rows.length === 0 ? (
+              <EmptyState
+                overlay
+                title="No projects yet"
+                action={{ label: 'Create your first project', onClick: openNewProject }}
+              />
+            ) : undefined
+          }
         />
       </section>
 

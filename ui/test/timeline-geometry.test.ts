@@ -10,6 +10,9 @@ import {
   todayX,
   weekendCols,
   weekTicks,
+  weekStartOf,
+  dayTicks,
+  dayWidth,
 } from '../src/lib/timeline';
 
 const FROM = '2026-11-16';
@@ -52,7 +55,9 @@ describe('timeline geometry', () => {
     expect(ticks).toHaveLength(8);
     expect(ticks.slice(0, 3).map((t) => t.x)).toEqual([0, 112, 224]);
     expect(ticks[0]?.label).toBe('Nov 16');
-    expect(ticks[7]?.label).toBe('Jan 4, 2027');
+    expect(ticks[7]?.label).toBe('Jan 4');
+    // a label more than about three months away carries its year
+    expect(weekTicks('2027-03-01', '2027-03-10', 16, 'mon', '2026-11-27')[0]?.label).toBe('Mar 1, 2027');
     expect(weekTicks(FROM, '2026-12-01', 16, 'sun', '2026-11-27')[0]).toEqual({ x: 96, label: 'Nov 22' });
   });
 
@@ -92,5 +97,20 @@ describe('timeline geometry', () => {
   it('barExtent counts an outside label as occupied width', () => {
     expect(barExtent(0, 200, 'Hi')).toBe(200);
     expect(barExtent(0, 10, 'Outline')).toBeGreaterThan(10 + 18);
+  });
+
+  it('weekStartOf finds the first day of the week', () => {
+    expect(weekStartOf('2026-11-27', 'mon')).toBe('2026-11-23');
+    expect(weekStartOf('2026-11-27', 'sun')).toBe('2026-11-22');
+    expect(weekStartOf('2026-11-23', 'mon')).toBe('2026-11-23');
+    expect(weekStartOf('2026-11-22', 'mon')).toBe('2026-11-16');
+  });
+
+  it('day zoom ticks every day, naming week starts in full', () => {
+    const t = dayTicks('2026-11-22', '2026-11-25', 40, 'mon', '2026-11-27');
+    expect(t.map((x) => x.x)).toEqual([0, 40, 80, 120]);
+    expect(t.map((x) => x.label)).toEqual(['Nov 22', 'Nov 23', '24', '25']);
+    expect(dayWidth('day')).toBe(40);
+    expect(dayWidth('week', 'project')).toBe(13);
   });
 });

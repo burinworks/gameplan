@@ -3,9 +3,13 @@ import { useAddDependency, useProject, useReschedule, useSettings } from '../../
 import type { TreeTask } from '../../api/types';
 import { today as todayStr } from '../../app/today';
 import { fmtDate } from '../../lib/format';
+import { useSearch } from 'wouter';
+import { parsePane } from '../../app/routes';
 import { usePaneNav } from '../../pane/Pane';
+import { weekStartOf, type Zoom } from '../../lib/timeline';
 import { useDraftBar } from '../../pane/draftBar';
 import { Timeline, type TLBar, type TLGroup, type TLLink, type TLRow } from '../../timeline/Timeline';
+import { EmptyState } from '../../ui';
 
 export type GroupBy = 'milestone' | 'area';
 
@@ -38,12 +42,15 @@ function saveCollapsed(slug: string, ids: string[]): void {
 
 const atRisk = (t: TreeTask): boolean => t.health === 'late' || t.health === 'conflict';
 
-export function TimelineTab({ slug, zoom = 'week', groupBy = 'milestone' }: { slug: string; zoom?: 'week' | 'month'; groupBy?: GroupBy }) {
+export function TimelineTab({ slug, zoom = 'week', groupBy = 'milestone' }: { slug: string; zoom?: Zoom; groupBy?: GroupBy }) {
   const project = useProject(slug);
   const settings = useSettings();
   const reschedule = useReschedule();
   const addDependency = useAddDependency();
-  const { openTask } = usePaneNav();
+  const { openTask, openNewTask } = usePaneNav();
+  const pane = parsePane(useSearch());
+  const selectedId = pane?.kind === 'task' ? pane.taskId : undefined;
+  const weekStart = settings.data?.week_start === 'sun' ? 'sun' : 'mon';
   const draft = useDraftBar();
   const [stored, setStored] = useState(() => ({ slug, ids: loadCollapsed(slug) }));
   // Collapse state belongs to one project: re-read it when the slug changes.
@@ -84,21 +91,16 @@ export function TimelineTab({ slug, zoom = 'week', groupBy = 'milestone' }: { sl
 
     if (groupBy === 'milestone') {
       for (const m of tree.milestones) {
-        groups.push({ id: m.id, label: m.name, collapsed: collapsed.includes(m.id) });
-        milestoneIds.add(m.id);
-        const end = m.span.end ?? m.due;
-        const start = m.span.start ?? end;
-        rows.push({
-          id: `milestone:${m.id}`,
-          label: 'Milestone',
-          meta: m.due ? fmtDate(m.due, now) : undefined,
-          dot: m.health === 'late' || m.health === 'conflict' ? 'risk' : undefined,
-          bars:
-            start && end
-              ? [{ id: m.id, kind: 'milestone', label: m.name, start, end, color: projectColor, progress: m.progress.pct, risk: m.health === 'late' || m.health === 'conflict', diamond: true, draggable: false }]
-              : [],
-          group: m.id,
+        const due = m.due ?? m.span.end ?? undefined;
+        const late = m.health === 'late' || m.health === 'conflict';
+        groups.push({
+          id: m.id,
+          label: m.name,
+          collapsed: collapsed.includes(m.id),
+          due: due ? fmtDate(due, now) : undefined,
+          mark: due ? { id: m.id, date: due, color: projectColor, risk: late } : undefined,
         });
+        milestoneIds.add(m.id);
         for (const t of m.tasks) rows.push(taskRow(t, m.id));
       }
     } else {
@@ -139,24 +141,24 @@ export function TimelineTab({ slug, zoom = 'week', groupBy = 'milestone' }: { sl
     const ends = taskBars.map((b) => b.end);
     const from = addDays(starts.length ? starts.reduce(minDate) : now, -7);
     const to = maxDate(addDays(ends.length ? ends.reduce(maxDate) : now, 14), addDays(now, 45));
-    return { rows, groups, links, from: minDate(from, addDays(now, -7)), to, taskIds, milestoneIds };
-  }, [project.data, groupBy, collapsed, draft, now]);
+    // Start on a week boundary so the first column is a full, labelled week.
+    return { rows, groups, links, from: weekStartOf(minDate(from, addDays(now, -7)), weekStart), to, taskIds, milestoneIds, hasTasks: taskIds.size > 0 || !!draft };
+  }, [project.data, groupBy, collapsed, draft, now, weekStart]);
 
   if (!built) {
-    return <section aria-label="Timeline" className="pj-body" />;
+    return <section aria-label="Timeline" className="pj-body tl-host" />;
   }
-  if (!built.rows.length) {
-    return (
-      <section aria-label="Timeline" className="pj-body">
-        <p className="pj-empty">No tasks yet</p>
-      </section>
-    );
-  }
-
   return (
-    <section aria-label="Timeline" className="pj-body">
+    <section aria-label="Timeline" className="pj-body tl-host">
       <Timeline
-        key={`${slug}:${groupBy}`}
+        key={`${slug}:${groupBy}:${zoom}`}
+        variant="project"
+        selectedId={selectedId}
+        empty={
+          built.hasTasks ? undefined : (
+            <EmptyState overlay title="No tasks yet" action={{ label: 'Add a task', onClick: () => openNewTask(slug) }} />
+          )
+        }
         rows={built.rows}
         links={built.links}
         groups={built.groups}
@@ -164,7 +166,7 @@ export function TimelineTab({ slug, zoom = 'week', groupBy = 'milestone' }: { sl
         to={built.to}
         today={now}
         zoom={zoom}
-        weekStart={settings.data?.week_start === 'sun' ? 'sun' : 'mon'}
+        weekStart={weekStart}
         showWeekends={settings.data?.show_weekends ?? true}
         initialScrollToToday
         onToggleGroup={toggle}
