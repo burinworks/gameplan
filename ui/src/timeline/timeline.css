@@ -32,6 +32,35 @@
   border-right: 1px solid var(--gp-grid);
 }
 
+/* corner above the label column: the month at the left edge of the view, on the date-strip baseline */
+.tl-labels-head {
+  position: relative;
+  box-sizing: border-box;
+}
+.tl-labels-head::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--tl-strip) - 1px);
+  border-bottom: 1px solid var(--gp-grid);
+}
+.tl-corner {
+  position: absolute;
+  top: calc((var(--tl-strip) - var(--gp-lh-micro)) / 2);
+  font-size: var(--gp-fs-micro);
+  line-height: var(--gp-lh-micro);
+  font-weight: var(--gp-fw-semibold);
+  color: var(--gp-text2);
+  white-space: nowrap;
+}
+.tl--home .tl-corner {
+  left: var(--gp-s18);
+}
+.tl--project .tl-corner {
+  left: var(--gp-s12);
+}
+
 .tl-rowlabel,
 .tl-group {
   display: flex;
@@ -170,7 +199,7 @@
 
 .tl-weekend {
   position: absolute;
-  top: var(--tl-head);
+  top: var(--tl-strip);
   bottom: 0;
   background: var(--gp-weekend);
 }
@@ -183,8 +212,8 @@
 }
 .tl-tick-label {
   position: absolute;
-  top: calc(var(--gp-s12) + 1px);
-  left: var(--gp-s8);
+  top: calc((var(--tl-strip) - var(--gp-lh-micro)) / 2);
+  left: var(--gp-s6);
   font-size: var(--gp-fs-micro);
   line-height: var(--gp-lh-micro);
   font-weight: var(--gp-fw-medium);
@@ -192,31 +221,63 @@
   white-space: nowrap;
 }
 
+/* hairline under the date strip */
+.tl-strip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--tl-strip);
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--gp-grid);
+  pointer-events: none;
+}
+
+/* day zoom: each date centred in its own column */
+.tl--day .tl-tick-label {
+  left: 0;
+  width: var(--tl-day);
+  text-align: center;
+}
+.tl-tick.is-month .tl-tick-label {
+  font-weight: var(--gp-fw-semibold);
+  color: var(--gp-text2);
+}
+.tl-tick.is-today .tl-tick-label {
+  color: var(--gp-accent);
+  font-weight: var(--gp-fw-semibold);
+}
+
+/* month zoom: week sub-lines, fainter than the month lines and kept out of the date strip */
+.tl-minor {
+  position: absolute;
+  top: var(--tl-strip);
+  bottom: 0;
+  border-left: 1px solid color-mix(in srgb, var(--gp-grid) 50%, transparent);
+}
+
+/* Today: a line on the left edge of today's column, the word in accent just under the date strip */
 .tl-today-line {
   position: absolute;
-  top: calc(var(--gp-s32) + var(--gp-s2));
+  top: var(--tl-strip);
   bottom: 0;
   width: calc(var(--gp-s2) * 0.75);
-  margin-left: calc(var(--gp-s2) * -0.375);
   background: var(--gp-accent);
   z-index: var(--gp-z-timeline);
   pointer-events: none;
 }
 .tl-today-label {
   position: absolute;
-  top: var(--gp-s12);
-  height: var(--gp-s20);
-  padding: 0 calc(var(--gp-s6) + 1px);
-  box-sizing: border-box;
-  transform: translateX(-50%);
+  top: var(--tl-strip);
+  height: calc(var(--tl-head) - var(--tl-strip));
+  margin-left: var(--gp-s6);
   display: flex;
   align-items: center;
-  border-radius: var(--gp-r6);
-  background: var(--gp-accent);
-  color: var(--gp-onAccent);
   font-size: var(--gp-fs-micro);
   line-height: var(--gp-lh-micro);
   font-weight: var(--gp-fw-semibold);
+  color: var(--gp-accent);
+  white-space: nowrap;
   z-index: var(--gp-z-timeline);
   pointer-events: none;
 }
@@ -225,6 +286,30 @@
   position: absolute;
   left: 0;
   right: 0;
+}
+
+/* risk lines run under bars and labels; text always reads on top of them */
+.tl-underlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+}
+
+/* text on the track sits above the Today line and dependency arrows */
+.tl-bar-label,
+.tl-pct,
+.tl-label-out,
+.tl-gname {
+  z-index: calc(var(--gp-z-timeline) + 1);
+}
+/* free-standing text gets a soft halo in the surface colour so grid and risk lines stop short of the glyphs */
+.tl-label-out,
+.tl-gname,
+.tl-today-label {
+  text-shadow:
+    0 0 var(--gp-s2) var(--gp-panelSolid),
+    0 0 var(--gp-s4) var(--gp-panelSolid);
 }
 
 .tl-overlay {
@@ -256,6 +341,9 @@
   touch-action: none;
   cursor: default;
   transition: box-shadow var(--gp-fast);
+}
+.tl-bar.is-task {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bar-color) 22%, transparent);
 }
 .tl-bar.is-draggable {
   cursor: grab;
@@ -330,6 +418,39 @@
   pointer-events: none;
 }
 
+.tl-bar-label + .tl-pct {
+  margin-left: 0;
+}
+.tl-bar-label {
+  flex: 1;
+}
+/* "40%" inside a task bar, at its right end (before the area strip) */
+.tl-pct {
+  position: relative;
+  flex: none;
+  margin-left: auto;
+  padding: 0 var(--gp-s8) 0 var(--gp-s4);
+  font-size: var(--gp-fs-micro);
+  line-height: var(--gp-lh-micro);
+  font-weight: var(--gp-fw-semibold);
+  color: color-mix(in srgb, var(--gp-text) 62%, var(--bar-color));
+  pointer-events: none;
+}
+.tl-bar.has-area .tl-pct {
+  padding-right: var(--gp-s12);
+}
+/* area colour strip at the bar's end */
+.tl-area {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: var(--gp-s4);
+  border-start-end-radius: inherit;
+  border-end-end-radius: inherit;
+  pointer-events: none;
+}
+
 .tl-label-out {
   position: absolute;
   top: calc(var(--lane, 0) * var(--tl-pitch) + (var(--tl-pitch) - var(--gp-lh-meta)) / 2);
@@ -384,6 +505,29 @@
 .tl-gdiamond.is-risk {
   box-shadow: var(--gp-riskRing);
 }
+/* the milestone's name beside its diamond */
+.tl-gname {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--gp-fs-meta);
+  line-height: var(--gp-lh-meta);
+  font-weight: var(--gp-fw-medium);
+  color: var(--gp-text2);
+  pointer-events: none;
+}
+/* milestone colour in the label column: a small rhombus, like the diamond on the track */
+.tl-gswatch {
+  flex: none;
+  width: var(--gp-diamondSm);
+  height: var(--gp-diamondSm);
+  margin: 0 var(--gp-s2);
+  border-radius: calc(var(--gp-r2) * 0.75);
+  transform: rotate(45deg);
+}
 
 /* host for a timeline that fills its container (Home panel, project tab body) */
 .tl-host {
@@ -419,10 +563,138 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .tl-empty-choice,
   .tl-bar,
   .tl-handle,
   .tl-chev,
   .tl-group {
     transition: none;
   }
+}
+
+/* empty timeline: a card over the grid with square choices */
+.tl-empty {
+  position: absolute;
+  inset: 0;
+  z-index: var(--gp-z-timeline);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--gp-s24) var(--gp-s16);
+  pointer-events: none;
+}
+.tl-empty-card {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--gp-s4);
+  padding: var(--gp-s20) var(--gp-s24) var(--gp-s24);
+  border-radius: var(--gp-r12);
+  background: var(--gp-card);
+  box-shadow: var(--gp-hairline), var(--gp-shadow-pill);
+  text-align: center;
+}
+.tl-empty-title,
+.tl-empty-hint {
+  margin: 0;
+}
+.tl-empty-title {
+  font-size: var(--gp-fs-section);
+  line-height: var(--gp-lh-section);
+  font-weight: var(--gp-fw-semibold);
+  color: var(--gp-text);
+}
+.tl-empty-hint {
+  font-size: var(--gp-fs-meta);
+  line-height: var(--gp-lh-meta);
+  color: var(--gp-text2);
+}
+.tl-empty-choices {
+  display: flex;
+  gap: var(--gp-s12);
+  margin-top: var(--gp-s14);
+}
+.tl-empty-choice {
+  min-width: calc(var(--gp-s32) * 3.5);
+  height: calc(var(--gp-s32) * 3);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gp-s12);
+  padding: var(--gp-s12) var(--gp-s18);
+  border: 0;
+  border-radius: var(--gp-r10);
+  background: var(--gp-panel);
+  box-shadow: inset 0 0 0 1px var(--gp-edge);
+  color: var(--gp-text);
+  font: inherit;
+  cursor: pointer;
+  transition: background var(--gp-fast), box-shadow var(--gp-fast);
+}
+.tl-empty-choice:hover {
+  background: var(--gp-sel);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gp-accent) 45%, transparent);
+}
+.tl-empty-choice:focus-visible {
+  outline: none;
+  box-shadow: var(--gp-focus);
+}
+.tl-empty-label {
+  font-size: var(--gp-fs-body);
+  line-height: var(--gp-lh-body);
+  font-weight: var(--gp-fw-medium);
+}
+.tl-empty-vis {
+  height: var(--gp-s24);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tl-empty-sausage {
+  position: relative;
+  width: calc(var(--gp-s32) * 1.75);
+  height: var(--gp-s14);
+  border-radius: var(--gp-r7);
+  background: color-mix(in srgb, var(--gp-accent) var(--gp-bar-tint), transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gp-accent) 22%, transparent);
+  overflow: hidden;
+}
+.tl-empty-sausage-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  background: color-mix(in srgb, var(--gp-accent) var(--gp-bar-progress), transparent);
+}
+.tl-empty-rhombus {
+  width: var(--gp-s14);
+  height: var(--gp-s14);
+  border-radius: var(--gp-r3);
+  background: var(--gp-accent);
+  transform: rotate(45deg);
+}
+.tl-empty-vis--rows {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--gp-s4);
+}
+.tl-empty-mini {
+  height: var(--gp-s6);
+  border-radius: var(--gp-r3);
+}
+.tl-empty-mini--a {
+  width: calc(var(--gp-s32) * 1.25);
+  background: color-mix(in srgb, var(--gp-p1) 55%, transparent);
+}
+.tl-empty-mini--b {
+  width: calc(var(--gp-s32) * 0.9);
+  margin-left: var(--gp-s12);
+  background: color-mix(in srgb, var(--gp-p2) 55%, transparent);
+}
+.tl-empty-mini--c {
+  width: calc(var(--gp-s32) * 1.5);
+  margin-left: var(--gp-s6);
+  background: color-mix(in srgb, var(--gp-p3) 55%, transparent);
 }

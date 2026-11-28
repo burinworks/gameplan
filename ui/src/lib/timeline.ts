@@ -14,7 +14,11 @@ export const PROJECT_BAR_H = 24;
 export const PROJECT_GROUP_H = 38;
 export const HOME_GROUP_H = 30;
 export const BAR_GAP = 8;
-export const HEADER_H = 40;
+/** Date strip at the top of the canvas. */
+export const STRIP_H = 32;
+/** Lane under the date strip that holds the "Today" label, so it never sits on a bar or a diamond. */
+export const TODAY_LANE_H = 16;
+export const HEADER_H = STRIP_H + TODAY_LANE_H;
 
 const MS_DAY = 86_400_000;
 
@@ -27,7 +31,7 @@ function fromMs(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
-function addDays(d: string, n: number): string {
+export function addDays(d: string, n: number): string {
   return fromMs(toMs(d) + n * MS_DAY);
 }
 
@@ -60,8 +64,9 @@ export function barGeom(
   };
 }
 
+/** Today's line sits on the left edge of today's column. */
 export function todayX(from: string, today: string, dayW: number): number {
-  return dayIndex(from, today) * dayW + dayW / 2;
+  return dayIndex(from, today) * dayW;
 }
 
 export function dayWidth(zoom: Zoom, variant: TimelineVariant = 'home'): number {
@@ -76,57 +81,90 @@ export function weekStartOf(d: string, weekStart: 'mon' | 'sun'): string {
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-const YEAR_SHOWN_AFTER_DAYS = 92;
-
-// "Nov 16". The year is added only when it differs from today's and the date is more than about three
-// months from today, so "Jan 4" stays short while a label a year out reads "Jan 4, 2028".
-function monthDay(d: string, today: string): string {
+function parts(d: string): { y: number; m: number; day: number } {
   const [y = 0, m = 1, day = 1] = d.split('-').map(Number);
-  const base = `${MONTHS[m - 1]} ${day}`;
-  const far = Math.abs(dayIndex(today, d)) > YEAR_SHOWN_AFTER_DAYS;
-  return y !== Number(today.slice(0, 4)) && far ? `${base}, ${y}` : base;
+  return { y, m, day };
 }
 
 function weekday(d: string): number {
   return new Date(toMs(d)).getUTCDay(); // 0 = Sunday
 }
 
-export function weekTicks(
-  from: string,
-  to: string,
-  dayW: number,
-  weekStart: 'mon' | 'sun',
-  today: string,
-): { x: number; label: string }[] {
+/** "November 2026": the month and year at a date, shown in the corner above the label column. */
+export function monthYear(d: string): string {
+  const { y, m } = parts(d);
+  return `${MONTH_NAMES[m - 1]} ${y}`;
+}
+
+export interface Tick {
+  x: number;
+  label: string;
+  /** The label names a month ("Dec 1", "Dec 7"); drawn a step stronger than plain day numbers. */
+  month?: true;
+}
+
+/** Week zoom: a tick per week start. The first week starting in a month reads "Dec 7"; the others just "14". */
+export function weekTicks(from: string, to: string, dayW: number, weekStart: 'mon' | 'sun'): Tick[] {
   const startDow = weekStart === 'mon' ? 1 : 0;
   const last = dayIndex(from, to);
-  const out: { x: number; label: string }[] = [];
+  const out: Tick[] = [];
+  let prevMonth = -1;
   for (let i = 0; i <= last; i++) {
     const d = addDays(from, i);
-    if (weekday(d) === startDow) out.push({ x: i * dayW, label: monthDay(d, today) });
+    if (weekday(d) !== startDow) continue;
+    const { m, day } = parts(d);
+    out.push(m !== prevMonth ? { x: i * dayW, label: `${MONTHS[m - 1]} ${day}`, month: true } : { x: i * dayW, label: String(day) });
+    prevMonth = m;
   }
   return out;
 }
 
-/** Day zoom: a tick every day. A week start reads "Nov 16"; the other days read just the day of the month. */
-export function dayTicks(
-  from: string,
-  to: string,
-  dayW: number,
-  weekStart: 'mon' | 'sun',
-  today: string,
-): { x: number; label: string }[] {
-  const startDow = weekStart === 'mon' ? 1 : 0;
+/** Day zoom: a tick every day. Only the 1st of a month carries the month ("Dec 1", then "2", "3"…). */
+export function dayTicks(from: string, to: string, dayW: number): Tick[] {
   const last = dayIndex(from, to);
-  const out: { x: number; label: string }[] = [];
+  const out: Tick[] = [];
   for (let i = 0; i <= last; i++) {
-    const d = addDays(from, i);
-    const label = weekday(d) === startDow || i === 0 ? monthDay(d, today) : String(Number(d.slice(8)));
-    out.push({ x: i * dayW, label });
+    const { m, day } = parts(addDays(from, i));
+    out.push(day === 1 ? { x: i * dayW, label: `${MONTHS[m - 1]} ${day}`, month: true } : { x: i * dayW, label: String(day) });
   }
   return out;
 }
+
+/** Month zoom: a tick on the 1st of each month, "Dec", or "Jan 2027" when the year is not today's. */
+export function monthTicks(from: string, to: string, dayW: number, today: string): Tick[] {
+  const last = dayIndex(from, to);
+  const thisYear = parts(today).y;
+  const out: Tick[] = [];
+  for (let i = 0; i <= last; i++) {
+    const { y, m, day } = parts(addDays(from, i));
+    if (day !== 1) continue;
+    out.push({ x: i * dayW, label: y === thisYear ? MONTHS[m - 1]! : `${MONTHS[m - 1]} ${y}` });
+  }
+  return out;
+}
+
+/** Month zoom sub-lines: week starts, unlabelled; a week start on the 1st is already a month line. */
+export function minorLines(from: string, to: string, dayW: number, weekStart: 'mon' | 'sun'): number[] {
+  const startDow = weekStart === 'mon' ? 1 : 0;
+  const last = dayIndex(from, to);
+  const out: number[] = [];
+  for (let i = 0; i <= last; i++) {
+    const d = addDays(from, i);
+    if (weekday(d) === startDow && parts(d).day !== 1) out.push(i * dayW);
+  }
+  return out;
+}
+
+export function ticksFor(zoom: Zoom, from: string, to: string, dayW: number, weekStart: 'mon' | 'sun', today: string): Tick[] {
+  if (zoom === 'day') return dayTicks(from, to, dayW);
+  if (zoom === 'month') return monthTicks(from, to, dayW, today);
+  return weekTicks(from, to, dayW, weekStart);
+}
+
+/** How many days the window grows by when the view nears one of its edges. */
+export const EXTEND_DAYS: Record<Zoom, number> = { day: 42, week: 91, month: 365 };
 
 export function weekendCols(from: string, to: string, dayW: number): { x: number; w: number }[] {
   const last = dayIndex(from, to);
@@ -152,6 +190,14 @@ export function arrowPath(a: { x2: number; y: number }, b: { x1: number; y: numb
   return `M${a.x2} ${a.y} H${a.x2 + 8} V${midY} H${b.x1 - 10} V${b.y} H${b.x1 - 2}`;
 }
 
+/**
+ * Dashed risk line from the end of a bar that runs past its milestone up to that milestone's diamond:
+ * straight up from the bar's top-right corner to the diamond's row, then left to the diamond's edge.
+ */
+export function riskPath(bar: { x2: number; top: number }, diamond: { x: number; y: number; r: number }): string {
+  return `M${bar.x2} ${bar.top} V${diamond.y} H${diamond.x + diamond.r}`;
+}
+
 export function dragDates(
   kind: 'move' | 'start' | 'end',
   orig: { start: string; end: string },
@@ -168,9 +214,24 @@ export function dragDates(
   return { start: orig.start, end: e < orig.start ? orig.start : e };
 }
 
-/** 12px Inter 500 width estimate: 9px left padding, 6.6px per character, 8px right. */
-export function labelFits(label: string, w: number): boolean {
-  return w >= 9 + label.length * 6.6 + 8;
+/** 12px Inter 500 width estimate: 9px left padding, 6.6px per character, 8px right. `extra` adds characters (e.g. " 40%"). */
+export function labelFits(label: string, w: number, extra = 0): boolean {
+  return w >= 9 + (label.length + extra) * 6.6 + 8;
+}
+
+/** "40%" for a progress value. */
+export function pctText(pct: number): string {
+  return `${Math.round(Math.min(100, Math.max(0, pct)))}%`;
+}
+
+/** Characters the "40%" text takes inside a bar, its gap included (0 when there is none). */
+export function pctChars(pct: number | undefined): number {
+  return pct === undefined ? 0 : pctText(pct).length + 1;
+}
+
+/** Whether the "40%" text on its own fits inside a bar `w` wide. */
+export function pctFits(pct: number, w: number): boolean {
+  return w >= 16 + pctText(pct).length * 6.6;
 }
 
 /** Gap between a bar and its outside label, and the clear space kept between neighbours on one lane. */
@@ -178,8 +239,8 @@ export const LABEL_GAP = 18;
 const LANE_GAP = 4;
 
 /** Right edge of a bar including its outside label (when the label does not fit inside). */
-export function barExtent(x: number, w: number, label: string): number {
-  return labelFits(label, w) ? x + w : x + w + LABEL_GAP + label.length * 6.6 + 4;
+export function barExtent(x: number, w: number, label: string, extra = 0): number {
+  return labelFits(label, w, extra) ? x + w : x + w + LABEL_GAP + label.length * 6.6 + 4;
 }
 
 /**

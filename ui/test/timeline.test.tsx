@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../src/api/client';
-import { barGeom, DAY_W, ROW_PITCH } from '../src/lib/timeline';
+import { barGeom, DAY_W, dayIndex, ROW_PITCH } from '../src/lib/timeline';
 import { Timeline, type TLBar, type TLLink, type TLRow } from '../src/timeline/Timeline';
 
 const FROM = '2026-11-16';
@@ -279,5 +279,85 @@ describe('Timeline', () => {
   it('day zoom draws a tick per day', () => {
     const { container } = setup(rowOf(bar()), { zoom: 'day', to: '2026-11-30' });
     expect(container.querySelectorAll('.tl-tick')).toHaveLength(15);
+  });
+
+  it('draws Today on the left edge of its column with a plain accent label', () => {
+    const { container } = setup(rowOf(bar()));
+    const line = container.querySelector('.tl-today-line') as HTMLElement;
+    expect(line.style.left).toBe(`${dayIndex(FROM, TODAY) * DAY_W.week}px`);
+    const label = container.querySelector('.tl-today-label') as HTMLElement;
+    expect(label.textContent).toBe('Today');
+    expect(label.style.left).toBe(line.style.left);
+  });
+
+  it('week zoom names the month only on its first week', () => {
+    const { container } = setup(rowOf(bar()));
+    const labels = [...container.querySelectorAll('.tl-tick-label')].map((e) => e.textContent);
+    expect(labels.slice(0, 5)).toEqual(['Nov 16', '23', '30', 'Dec 7', '14']);
+  });
+
+  it('month zoom ticks once per month with faint week lines and no overlapping labels', () => {
+    const { container } = setup(rowOf(bar()), { zoom: 'month', to: '2027-02-15' });
+    expect([...container.querySelectorAll('.tl-tick-label')].map((e) => e.textContent)).toEqual(['Dec', 'Jan 2027', 'Feb 2027']);
+    expect(container.querySelectorAll('.tl-minor').length).toBeGreaterThan(8);
+  });
+
+  it('shows the month and year of the view in the corner', () => {
+    const { container } = setup(rowOf(bar()));
+    expect(container.querySelector('[data-timeline-month]')?.textContent).toBe('November 2026');
+  });
+
+  it('a task bar shows its completion as text and its area as an end strip', () => {
+    setup(rowOf(bar({ progress: 40, area: '#3FA796', start: '2026-11-20', end: '2026-12-20' })));
+    expect(el('b1').querySelector('[data-pct]')?.textContent).toBe('40%');
+    expect((el('b1').querySelector('[data-area]') as HTMLElement).style.background).toBe('rgb(63, 167, 150)');
+    expect(el('b1')).toHaveAttribute('aria-label', 'Draft the spec · 40%');
+  });
+
+  it('milestone bars carry no percentage', () => {
+    setup(rowOf(bar({ kind: 'milestone', start: '2026-11-20', end: '2026-12-20' })));
+    expect(el('b1').querySelector('[data-pct]')).toBeNull();
+  });
+
+  it('names the milestone beside its diamond', () => {
+    const { container } = setup([], {
+      variant: 'project',
+      groups: [{ id: 'g', label: 'M4 · Launch', collapsed: false, mark: { id: 'm', date: '2026-12-12', color: '#6E7CF5', risk: false } }],
+    });
+    const name = container.querySelector('[data-milestone-name="m"]') as HTMLElement;
+    expect(name.textContent).toBe('M4 · Launch');
+    const d = container.querySelector('[data-milestone="m"]') as HTMLElement;
+    // left of the diamond, right-aligned against it
+    expect(parseFloat(name.style.right)).toBeGreaterThan(0);
+    const canvasW = parseFloat((container.querySelector('.tl-canvas') as HTMLElement).style.width);
+    expect(canvasW - parseFloat(name.style.right)).toBeLessThan(parseFloat(d.style.left));
+  });
+
+  it('a bar ending after its milestone gets the risk ring and a dashed line to the diamond', () => {
+    const rows: TLRow[] = [{ id: 'r', label: 'Late one', group: 'g', bars: [bar({ risk: true, pastMark: 'm', start: '2026-12-01', end: '2026-12-20' })] }];
+    const { container } = setup(rows, {
+      variant: 'project',
+      groups: [{ id: 'g', label: 'M', collapsed: false, mark: { id: 'm', date: '2026-12-12', color: '#6E7CF5', risk: true } }],
+    });
+    expect(el('b1')).toHaveClass('is-risk');
+    const line = container.querySelector('[data-risk-line="b1"]') as SVGPathElement;
+    expect(line).not.toBeNull();
+    expect(line.getAttribute('stroke')).toBe('var(--gp-risk)');
+    expect(line.getAttribute('stroke-dasharray')).toBeTruthy();
+  });
+
+  it('grows the window when scrolled near either edge and reports the new range', () => {
+    const onRangeChange = vi.fn();
+    const { container } = setup(rowOf(bar()), { onRangeChange });
+    const sc = container.querySelector('[data-timeline-scroll]') as HTMLElement;
+    const canvas = container.querySelector('.tl-canvas') as HTMLElement;
+    Object.defineProperty(sc, 'clientWidth', { configurable: true, value: 600 });
+    sc.scrollLeft = 0;
+    fireEvent.scroll(sc);
+    expect(canvas.dataset.from! < FROM).toBe(true);
+    expect(canvas.dataset.to! > TO).toBe(true);
+    expect(onRangeChange).toHaveBeenCalledWith(canvas.dataset.from, canvas.dataset.to);
+    // the view does not jump: the added days on the left are added to the scroll position
+    expect(sc.scrollLeft).toBe(dayIndex(canvas.dataset.from!, FROM) * DAY_W.week);
   });
 });

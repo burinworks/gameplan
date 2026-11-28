@@ -3,6 +3,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { useHighlight } from '../api/live';
 import {
   BAR_H,
+  EXTEND_DAYS,
   HEADER_H,
   HOME_GROUP_H,
   LABEL_GAP,
@@ -10,15 +11,22 @@ import {
   PROJECT_GROUP_H,
   PROJECT_ROW_PITCH,
   ROW_PITCH,
+  STRIP_H,
+  addDays,
   assignLanes,
   barExtent,
   barGeom,
   dayIndex,
-  dayTicks,
   dayWidth,
   labelFits,
+  minorLines,
+  monthYear,
+  pctChars,
+  pctFits,
+  pctText,
+  riskPath,
+  ticksFor,
   todayX,
-  weekTicks,
   weekendCols,
   type TimelineVariant,
   type Zoom,
@@ -34,13 +42,17 @@ export interface TLBar {
   label: string;
   start: string;
   end: string;
-  /** Project or area colour (any CSS colour); tinted with color-mix. */
+  /** Fill colour (a task's milestone colour, a milestone's own colour); tinted with color-mix. */
   color: string;
-  /** 0..100 */
+  /** 0..100. Task bars show it as "40%" text inside the bar. */
   progress: number;
   risk: boolean;
   diamond?: boolean;
   draggable: boolean;
+  /** Area colour, drawn as a strip at the bar's end. */
+  area?: string;
+  /** Id of a group mark (milestone diamond) this bar ends after; draws a dashed risk line to it. */
+  pastMark?: string;
 }
 
 export interface TLRow {
@@ -66,13 +78,16 @@ export interface TLGroup {
   collapsed: boolean;
   /** Text at the right of the group row, e.g. a milestone's due date. */
   due?: string;
-  /** A diamond drawn on the group row at this date (a milestone's due date). */
+  /** A diamond drawn on the group row at this date (a milestone's due date), with the group's name beside it. */
   mark?: { id: string; date: string; color: string; risk: boolean };
+  /** Colour chip left of the group label (a milestone's colour). */
+  swatch?: string;
 }
 
 export interface TimelineProps {
   rows: TLRow[];
   links?: TLLink[];
+  /** The window the timeline opens with; it grows in either direction as the view nears an edge. */
   from: string;
   to: string;
   today: string;
@@ -85,6 +100,8 @@ export interface TimelineProps {
   /** Reject to snap the bar back; the message comes from the shared error line, not the timeline. */
   onReschedule?: (barId: string, dates: Dates) => Promise<unknown> | void;
   onLink?: (fromId: string, toId: string) => void;
+  /** Called when the window grows, so a caller that fetches by range can load the new days. */
+  onRangeChange?: (from: string, to: string) => void;
   /** `home` (default) is the all-projects overview; `project` is the single-project layout. */
   variant?: TimelineVariant;
   /** Overrides the variant's label column width. */
@@ -103,6 +120,22 @@ export interface TimelineHandle {
 
 const LINK_GAP = LABEL_GAP;
 const LABEL_W: Record<TimelineVariant, number> = { home: 170, project: 236 };
+/** Half the group diamond's diagonal (an 11px square turned 45°). */
+const MARK_R = 8;
+
+/**
+ * The milestone's name sits just left of its diamond (so a risk line leaving the diamond to the right never
+ * crosses it); with too little room on the left it goes to the right instead.
+ */
+function nameStyle(mx: number, totalW: number): CSSProperties {
+  const edge = mx - MARK_R - 6;
+  if (edge >= NAME_MIN_W) return { right: `${totalW - edge}px`, maxWidth: `${edge - 4}px`, textAlign: 'right' };
+  return { left: `${mx + MARK_R + 6}px`, maxWidth: `${Math.max(0, totalW - mx - MARK_R - 10)}px` };
+}
+const NAME_MIN_W = 96;
+
+const minDate = (a: string, b: string): string => (a < b ? a : b);
+const maxDate = (a: string, b: string): string => (a > b ? a : b);
 
 type Item =
   | { kind: 'group'; group: TLGroup; y: number; h: number }
@@ -111,6 +144,8 @@ type Item =
 interface Override extends Dates {
   base: Dates;
 }
+
+const pctOf = (bar: TLBar): number | undefined => (bar.kind === 'task' ? bar.progress : undefined);
 
 function BarView({
   bar,
@@ -147,13 +182,16 @@ function BarView({
   onHandleDown: (e: React.PointerEvent<HTMLElement>) => void;
 }) {
   const changed = useHighlight(bar.id);
-  const fits = labelFits(bar.label, w);
+  const pct = pctOf(bar);
+  const fits = labelFits(bar.label, w, pctChars(pct));
+  const showPct = pct !== undefined && pctFits(pct, w);
   const diamond = bar.diamond ?? bar.kind === 'milestone';
   const cls = [
     'tl-bar',
     `is-${bar.kind}`,
     bar.risk && 'is-risk',
     diamond && 'has-diamond',
+    bar.area && 'has-area',
     bar.draggable && 'is-draggable',
     dragging && 'is-dragging',
     changed && 'is-changed',
@@ -167,6 +205,7 @@ function BarView({
   const style = { left: `${x}px`, width: `${w}px`, '--lane': lane, '--bar-color': bar.color } as CSSProperties;
   const outsideMax = trackW - (x + w + LINK_GAP) - 4;
   const laneVar = { '--lane': lane } as CSSProperties;
+  const title = pct === undefined ? bar.label : `${bar.label} · ${pctText(pct)}`;
   return (
     <>
       <div
@@ -174,8 +213,8 @@ function BarView({
         data-bar={bar.id}
         role="button"
         tabIndex={0}
-        aria-label={bar.label}
-        title={bar.label}
+        aria-label={title}
+        title={title}
         style={style}
         onPointerDown={onPointerDown}
         onKeyDown={onKeyDown}
@@ -191,6 +230,12 @@ function BarView({
             {bar.label}
           </span>
         )}
+        {showPct && (
+          <span className="tl-pct num" data-pct>
+            {pctText(pct)}
+          </span>
+        )}
+        {bar.area && <span className="tl-area" data-area style={{ background: bar.area }} aria-hidden="true" />}
         {diamond && <span className="tl-diamond" aria-hidden="true" />}
       </div>
       {!fits && outsideMax > 24 && (
@@ -229,8 +274,8 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
   {
     rows,
     links = [],
-    from,
-    to,
+    from: initialFrom,
+    to: initialTo,
     today,
     zoom,
     weekStart,
@@ -240,6 +285,7 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
     onOpen,
     onReschedule,
     onLink,
+    onRangeChange,
     variant = 'home',
     labelWidth = LABEL_W[variant],
     selectedId,
@@ -252,11 +298,18 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
   const pitch = variant === 'project' ? PROJECT_ROW_PITCH : ROW_PITCH;
   const barH = variant === 'project' ? PROJECT_BAR_H : BAR_H;
   const groupH = variant === 'project' ? PROJECT_GROUP_H : HOME_GROUP_H;
+
+  // The window only ever grows: it is the union of what the caller asks for and what scrolling added.
+  const [grown, setGrown] = useState({ from: initialFrom, to: initialTo });
+  const from = minDate(grown.from, initialFrom);
+  const to = maxDate(grown.to, initialTo);
   const last = dayIndex(from, to);
   const totalW = (last + 1) * dayW;
+
   const scroller = useRef<HTMLDivElement>(null);
   const plane = useRef<HTMLDivElement>(null);
   const [overrides, setOverrides] = useState<Record<string, Override>>({});
+  const [leftIdx, setLeftIdx] = useState(0);
 
   const barsById = useMemo(() => {
     const m = new Map<string, TLBar>();
@@ -339,7 +392,7 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
       // Lanes come from the saved dates so a bar being dragged does not change lines mid-drag.
       const placed = row.bars.flatMap((b) => {
         const g = barGeom(b.start, b.end, from, to, dayW);
-        return g ? [{ id: b.id, x: g.x, end: barExtent(g.x, g.w, b.label) }] : [];
+        return g ? [{ id: b.id, x: g.x, end: barExtent(g.x, g.w, b.label, pctChars(pctOf(b))) }] : [];
       });
       const { lanes, count } = assignLanes(placed);
       placed.forEach((p, i) => laneOf.set(p.id, lanes[i] ?? 0));
@@ -375,18 +428,34 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
     return m;
   }, [items, laneOf, effective, from, to, dayW, pitch]);
 
-  const ticks = useMemo(
-    () => (zoom === 'day' ? dayTicks(from, to, dayW, weekStart, today) : weekTicks(from, to, dayW, weekStart, today)),
-    [zoom, from, to, dayW, weekStart, today],
-  );
+  // Dashed risk lines: from the end of each visible bar that runs past its milestone, up to that diamond.
+  const riskLines = useMemo(() => {
+    const out: { id: string; d: string }[] = [];
+    for (const it of items) {
+      if (it.kind !== 'row') continue;
+      for (const b of it.row.bars) {
+        if (!b.pastMark) continue;
+        const a = pos.get(b.id);
+        const mk = pos.get(b.pastMark);
+        if (!a || !mk || a.x + a.w <= mk.x) continue;
+        out.push({ id: b.id, d: riskPath({ x2: a.x + a.w, top: a.y - barH / 2 }, { x: mk.x, y: mk.y, r: MARK_R }) });
+      }
+    }
+    return out;
+  }, [items, pos, barH]);
+
+  const ticks = useMemo(() => ticksFor(zoom, from, to, dayW, weekStart, today), [zoom, from, to, dayW, weekStart, today]);
+  const minors = useMemo(() => (zoom === 'month' ? minorLines(from, to, dayW, weekStart) : []), [zoom, from, to, dayW, weekStart]);
   const selectedRow = useMemo(() => {
     if (!selectedId) return undefined;
     return rows.find((r) => r.bars.some((b) => b.id === selectedId))?.id;
   }, [rows, selectedId]);
-  const weekends = useMemo(() => (showWeekends ? weekendCols(from, to, dayW) : []), [showWeekends, from, to, dayW]);
+  // Month zoom days are too narrow for weekend bands to read as anything but noise.
+  const weekends = useMemo(() => (showWeekends && zoom !== 'month' ? weekendCols(from, to, dayW) : []), [showWeekends, zoom, from, to, dayW]);
   const tIdx = dayIndex(from, today);
   const showToday = tIdx >= 0 && tIdx <= last;
   const tx = todayX(from, today, dayW);
+  const todayTickX = zoom === 'day' ? tx : -1;
 
   const scrollToToday = useCallback(() => {
     const el = scroller.current;
@@ -400,20 +469,71 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // When days are added on the left, move the scroll position by the same width so the view stays put.
+  const prevFrom = useRef(from);
+  useLayoutEffect(() => {
+    const prev = prevFrom.current;
+    prevFrom.current = from;
+    const el = scroller.current;
+    if (el && from < prev) el.scrollLeft += dayIndex(from, prev) * dayW;
+  }, [from, dayW]);
+
+  // Grow the window whenever the view comes within one screen of either edge (or the canvas is narrower than the view).
+  const growIfNeeded = useCallback(() => {
+    const el = scroller.current;
+    if (!el || el.clientWidth <= 0) return;
+    const step = EXTEND_DAYS[zoom];
+    const nearLeft = el.scrollLeft < el.clientWidth;
+    const nearRight = el.scrollLeft + el.clientWidth * 2 > totalW;
+    if (!nearLeft && !nearRight) return;
+    setGrown({ from: nearLeft ? addDays(from, -step) : from, to: nearRight ? addDays(to, step) : to });
+  }, [zoom, totalW, from, to]);
+
+  const onScroll = useCallback(() => {
+    const el = scroller.current;
+    if (!el) return;
+    setLeftIdx(Math.max(0, Math.floor(el.scrollLeft / dayW)));
+    growIfNeeded();
+  }, [dayW, growIfNeeded]);
+
+  useLayoutEffect(() => {
+    growIfNeeded();
+  }, [growIfNeeded]);
+
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => growIfNeeded());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [growIfNeeded]);
+
+  useEffect(() => {
+    if (from !== initialFrom || to !== initialTo) onRangeChange?.(from, to);
+    // report only real growth
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [from, to]);
+
   const canLinkAny = !!onLink;
   const style = {
     '--tl-label-w': `${labelWidth}px`,
     '--tl-head': `${HEADER_H}px`,
+    '--tl-strip': `${STRIP_H}px`,
+    '--tl-day': `${dayW}px`,
     '--tl-pitch': `${pitch}px`,
     '--tl-bar-h': `${barH}px`,
   } as CSSProperties;
 
   return (
-    <div className={`tl tl--${variant}`} style={style}>
+    <div className={`tl tl--${variant} tl--${zoom}`} style={style}>
       <div className="tl-main">
         <div className="tl-body">
           <div className="tl-labels" style={{ width: labelWidth }}>
-            <div className="tl-labels-head" style={{ height: HEADER_H }} />
+            <div className="tl-labels-head" style={{ height: HEADER_H }}>
+              <span className="tl-corner" data-timeline-month>
+                {monthYear(addDays(from, leftIdx))}
+              </span>
+            </div>
             {items.map((it) =>
               it.kind === 'group' ? (
                 <button
@@ -426,6 +546,7 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
                   onClick={() => onToggleGroup?.(it.group.id)}
                 >
                   <Chevron open={!it.group.collapsed} />
+                  {it.group.swatch && <span className="tl-gswatch" style={{ background: it.group.swatch }} aria-hidden="true" />}
                   <span className="tl-group-label" dir="auto" title={it.group.label}>
                     {it.group.label}
                   </span>
@@ -458,17 +579,28 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
             )}
           </div>
 
-          <div className="tl-scroll" ref={scroller} data-timeline-scroll>
+          <div className="tl-scroll" ref={scroller} data-timeline-scroll onScroll={onScroll}>
             <div
               className={drag.link ? 'tl-canvas is-linking' : 'tl-canvas'}
               ref={plane}
+              data-from={from}
+              data-to={to}
               style={{ width: totalW, minHeight: HEADER_H + bodyH }}
             >
               {weekends.map((c) => (
                 <span key={c.x} className="tl-weekend" style={{ left: c.x, width: c.w }} />
               ))}
+              {minors.map((x) => (
+                <span key={`m${x}`} className="tl-minor" style={{ left: x }} />
+              ))}
+              <span className="tl-strip" aria-hidden="true" />
+              {riskLines.length > 0 && (
+                <div className="tl-underlay" style={{ top: HEADER_H, height: bodyH }}>
+                  <Arrows links={[]} pos={pos} width={totalW} height={bodyH} pitch={pitch} risks={riskLines} />
+                </div>
+              )}
               {ticks.map((t) => (
-                <span key={t.x} className="tl-tick" style={{ left: t.x }}>
+                <span key={t.x} className={['tl-tick', t.month && 'is-month', t.x === todayTickX && 'is-today'].filter(Boolean).join(' ')} style={{ left: t.x }}>
                   <span className="tl-tick-label">{t.label}</span>
                 </span>
               ))}
@@ -484,16 +616,28 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
                 if (it.kind === 'group') {
                   const mk = it.group.mark;
                   const i = mk ? dayIndex(from, mk.date) : -1;
+                  const mx = i * dayW + dayW / 2;
                   return (
                     <div key={`g:${it.group.id}`} className="tl-trackrow is-group" style={{ top: HEADER_H + it.y, height: it.h }}>
                       {mk && i >= 0 && i <= last && (
-                        <span
-                          className={mk.risk ? 'tl-gdiamond is-risk' : 'tl-gdiamond'}
-                          data-milestone={mk.id}
-                          role="img"
-                          aria-label={`${it.group.label} due`}
-                          style={{ left: i * dayW + dayW / 2, '--bar-color': mk.color } as CSSProperties}
-                        />
+                        <>
+                          <span
+                            className={mk.risk ? 'tl-gdiamond is-risk' : 'tl-gdiamond'}
+                            data-milestone={mk.id}
+                            role="img"
+                            aria-label={`${it.group.label} due`}
+                            style={{ left: mx, '--bar-color': mk.color } as CSSProperties}
+                          />
+                          <span
+                            className="tl-gname"
+                            data-milestone-name={mk.id}
+                            dir="auto"
+                            title={it.group.label}
+                            style={nameStyle(mx, totalW)}
+                          >
+                            {it.group.label}
+                          </span>
+                        </>
                       )}
                     </div>
                   );

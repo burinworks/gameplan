@@ -135,13 +135,34 @@ describe('Timeline tab layout', () => {
     expect([...document.querySelectorAll('[data-row-label]')].map((e) => e.textContent)).not.toContain('Milestone');
   });
 
+  it('colours task bars by milestone, shows the area strip, and flags a task ending after its milestone', async () => {
+    const m1 = projectTree.milestones[0]!;
+    const due = new Date(Date.parse(tasks.spec.end!) - 86_400_000).toISOString().slice(0, 10);
+    const tree = { ...projectTree, milestones: [{ ...m1, color: '#D9892B', due }, ...projectTree.milestones.slice(1)] };
+    mockFetch({ '/api/projects/ship': tree, '/api/settings': settings });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <TimelineTab slug="ship" />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(document.querySelector(`[data-bar="${tasks.spec.id}"]`)).not.toBeNull());
+    const bar = document.querySelector(`[data-bar="${tasks.spec.id}"]`) as HTMLElement;
+    expect(bar.style.getPropertyValue('--bar-color')).toBe('#D9892B');
+    expect((bar.querySelector('[data-area]') as HTMLElement).style.background).toBe('rgb(63, 167, 150)');
+    expect(bar).toHaveClass('is-risk');
+    expect(document.querySelector(`[data-risk-line="${tasks.spec.id}"]`)).not.toBeNull();
+    expect(document.querySelector('[data-milestone-name="m1"]')?.textContent).toBe('Alpha');
+    expect(document.querySelector('[data-milestone="m1"]')).toHaveClass('is-risk');
+  });
+
   it('marks the open task row and bar as selected', async () => {
     setup('/p/ship/timeline', 'task=t-spec');
     await waitFor(() => expect(document.querySelector(`[data-bar="${tasks.spec.id}"]`)).toHaveClass('is-selected'));
     expect(document.querySelectorAll('.tl-rowlabel.is-selected')).toHaveLength(1);
   });
 
-  it('with no tasks it keeps the grid and offers Add a task', async () => {
+  it('with no tasks it keeps the grid and offers New task and New milestone on a card', async () => {
     const empty = { ...projectTree, milestones: [] };
     mockFetch({ '/api/projects/ship': empty, '/api/settings': settings });
     const loc = memoryLocation({ path: '/p/ship/timeline', record: true });
@@ -156,8 +177,13 @@ describe('Timeline tab layout', () => {
     expect(await screen.findByText('No tasks yet')).toBeInTheDocument();
     expect(document.querySelectorAll('.tl-tick').length).toBeGreaterThan(3);
     expect(document.querySelector('.tl-today-line')).not.toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Add a task' }));
+    expect(document.querySelector('.tl-empty-card')).not.toBeNull();
+    expect(document.querySelector('.tl-empty-sausage')).not.toBeNull();
+    expect(document.querySelector('.tl-empty-rhombus')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'New task' }));
     expect(last(loc.history)).toBe('/p/ship/timeline?new=task');
+    fireEvent.click(screen.getByRole('button', { name: 'New milestone' }));
+    expect(last(loc.history)).toBe('/p/ship/timeline?new=milestone');
   });
 });
 
