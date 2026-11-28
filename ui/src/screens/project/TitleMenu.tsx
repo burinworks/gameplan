@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useProject } from '../../api/hooks';
 import { paths } from '../../app/routes';
-import { Menu, type MenuItem } from '../../ui';
+import { Icon, Menu, type MenuItem } from '../../ui';
 import { ArchiveProjectSheet } from './ArchiveProjectSheet';
 
-/** The project title; it opens the project menu. */
+/** The project title as a menu button with a chevron; it goes inside the page heading. */
 export function TitleMenu({ slug }: { slug: string }) {
   const [, navigate] = useLocation();
   const project = useProject(slug).data?.project;
@@ -20,9 +20,24 @@ export function TitleMenu({ slug }: { slug: string }) {
 
   const name = project?.name ?? slug;
   return (
-    <h1 className="pj-title" dir="auto" title={name}>
-      <Menu align="start" label={name} trigger={<span className="pj-title__text">{name}</span>} items={items} />
+    <>
+      <Menu
+        align="start"
+        label={name}
+        triggerClassName="pj-title"
+        trigger={
+          <>
+            <span className="pj-title__text" dir="auto" title={name}>
+              {name}
+            </span>
+            <span className="pj-title__chev">
+              <Icon name="chevronDown" size={12} />
+            </span>
+          </>
+        }
+        items={items}
+      />
       {confirming && project && <ArchiveProjectSheet project={project} onClose={() => setConfirming(false)} />}
-    </h1>
+    </>
   );
 }

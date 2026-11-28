@@ -3,11 +3,12 @@ import { ApiError } from '../../api/client';
 import { useRevert, useUpdates } from '../../api/hooks';
 import type { UpdateRow } from '../../api/types';
 import { today as todayStr } from '../../app/today';
-import { errorLine, fmtActor, fmtAgo, fmtDate, fmtRange, statusLabel } from '../../lib/format';
-import { Segmented } from '../../ui';
+import { errorLine, fmtActor, fmtAgo, fmtDate, fmtHeaderDate, fmtRange, statusLabel } from '../../lib/format';
+import { EmptyState } from '../../ui';
+import { Glyph, type GlyphName } from './glyphs';
 import './updates.css';
 
-type Actor = 'all' | 'agents' | 'you';
+export type Actor = 'all' | 'agents' | 'you';
 
 const NOT_REVERTIBLE = new Set(['reverted', 'settings_changed', 'captured', 'triaged', 'day_planned']);
 
@@ -27,17 +28,33 @@ const host = (url: string | null): string | null => {
   }
 };
 
-/** One sentence per event kind, plus optional detail lines. */
-export function describe(e: UpdateRow, now: string): { text: string; note?: string; conflicts: string[] } {
+interface Described {
+  /** Lowercase verb phrase after the actor ("moved", "added a commit to"). */
+  verb: string;
+  /** What the event is about; shown in medium weight. */
+  target: string;
+  /** Second line: an icon plus text (dates, commit, plan counts). */
+  detail?: { text: string; icon?: GlyphName; mono?: boolean };
+  /** A reason or note, shown with a left rule. */
+  note?: string;
+  conflicts: string[];
+}
+
+const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
+
+/** One sentence per event kind (actor + verb + target), plus an optional detail line and note. */
+export function describe(e: UpdateRow, now: string): Described {
   const label = e.label ?? '';
   const before = e.before ?? {};
   const after = e.after ?? {};
   const none: string[] = [];
   switch (e.kind) {
-    case 'created':
-      return { text: `Created ${label}`, conflicts: none };
+    case 'created': {
+      const due = str(after.due);
+      return { verb: 'created', target: label, detail: due ? { text: `Due ${fmtDate(due, now)}`, icon: 'cal' } : undefined, conflicts: none };
+    }
     case 'updated':
-      return { text: `Edited ${label}`, conflicts: none };
+      return { verb: 'edited', target: label, conflicts: none };
     case 'dates_changed': {
       const bs = str(before.start);
       const be = str(before.end);
@@ -48,54 +65,58 @@ export function describe(e: UpdateRow, now: string): { text: string; note?: stri
       else if (be === ae && bs !== as) move = `${bs ? fmtDate(bs, now) : '—'} → ${as ? fmtDate(as, now) : '—'}`;
       else move = `${fmtRange(bs, be, now)} → ${fmtRange(as, ae, now)}`;
       const conflicts = Array.isArray(after.conflicts) ? after.conflicts.filter((c): c is string => typeof c === 'string') : none;
-      return { text: `Moved ${label} ${move}`, note: e.reason ?? undefined, conflicts };
+      return { verb: 'moved', target: label, detail: { text: move, icon: 'cal' }, note: e.reason ?? undefined, conflicts };
     }
     case 'status_changed':
-      return { text: `${label}: ${status(before.status)} → ${status(after.status)}`, conflicts: none };
+      return { verb: 'changed the status of', target: label, detail: { text: `${status(before.status)} → ${status(after.status)}` }, conflicts: none };
     case 'todo_done':
-      return { text: `Ticked ${label}`, conflicts: none };
+      return { verb: 'ticked', target: label, conflicts: none };
     case 'todo_undone':
-      return { text: `Unticked ${label}`, conflicts: none };
+      return { verb: 'unticked', target: label, conflicts: none };
     case 'attached': {
       const ref = str(after.ref);
-      if (after.kind === 'commit') return { text: `Linked commit ${(ref ?? label).slice(0, 7)}`, conflicts: none };
-      if (after.kind === 'pr') return { text: `Linked PR #${(ref ?? label).replace(/^#/, '')}`, conflicts: none };
-      return { text: `Attached ${str(after.title) ?? host(str(after.url)) ?? label}`, conflicts: none };
+      const task = str(after.task) ?? label;
+      if (after.kind === 'commit') return { verb: 'added a commit to', target: task, detail: { text: `${(ref ?? label).slice(0, 7)}  ${str(after.title) ?? ''}`.trim(), icon: 'commit', mono: true }, conflicts: none };
+      if (after.kind === 'pr') return { verb: 'linked a pull request to', target: task, detail: { text: `#${(ref ?? label).replace(/^#/, '')}  ${str(after.title) ?? ''}`.trim(), icon: 'pr' }, conflicts: none };
+      return { verb: 'attached', target: str(after.title) ?? host(str(after.url)) ?? label, conflicts: none };
     }
     case 'detached':
-      return { text: `Removed ${label}`, conflicts: none };
+      return { verb: 'removed', target: label, conflicts: none };
     case 'planned':
-      return { text: `Planned ${label} · ${num(after.tasks)} tasks · ${num(after.todos)} to-dos · ${num(after.dependencies)} dependencies`, conflicts: none };
+      return {
+        verb: 'planned',
+        target: label,
+        detail: { text: `${plural(num(after.tasks), 'task', 'tasks')} · ${plural(num(after.todos), 'to-do', 'to-dos')} · ${plural(num(after.dependencies), 'dependency', 'dependencies')}`, icon: 'plan' },
+        conflicts: none,
+      };
     case 'review_accepted':
-      return { text: `Approved ${label}`, conflicts: none };
+      return { verb: 'accepted', target: label, conflicts: none };
     case 'review_sent_back':
-      return { text: `Sent back ${label}`, note: e.reason ?? undefined, conflicts: none };
-    case 'resume_noted': {
-      const n = str(after.note);
-      return { text: `Left off at ${label}`, note: n ? `↳ ${n}` : undefined, conflicts: none };
-    }
+      return { verb: 'sent back', target: label, note: e.reason ?? undefined, conflicts: none };
+    case 'resume_noted':
+      return { verb: 'left off at', target: label, note: str(after.note) ?? undefined, conflicts: none };
     case 'captured':
-      return { text: `Captured "${str(after.text) ?? label}"`, conflicts: none };
+      return { verb: 'captured', target: `"${str(after.text) ?? label}"`, conflicts: none };
     case 'triaged':
-      return { text: `Triaged "${label}"`, conflicts: none };
+      return { verb: 'triaged', target: `"${label}"`, conflicts: none };
     case 'archived':
-      return { text: `Archived ${label}`, conflicts: none };
+      return { verb: 'archived', target: label, conflicts: none };
     case 'restored':
-      return { text: `Restored ${label}`, conflicts: none };
+      return { verb: 'restored', target: label, conflicts: none };
     case 'dependency_added':
-      return { text: `Linked ${label}`, conflicts: none };
+      return { verb: 'linked', target: label, conflicts: none };
     case 'dependency_removed':
-      return { text: `Unlinked ${label}`, conflicts: none };
+      return { verb: 'unlinked', target: label, conflicts: none };
     case 'reordered':
-      return { text: 'Reordered', conflicts: none };
+      return { verb: 'reordered', target: label, conflicts: none };
     case 'reverted':
-      return { text: 'Reverted a change', conflicts: none };
+      return { verb: 'reverted a change', target: '', conflicts: none };
     case 'settings_changed':
-      return { text: 'Changed settings', conflicts: none };
+      return { verb: 'changed settings', target: '', conflicts: none };
     case 'day_planned':
-      return { text: 'Planned the day', conflicts: none };
+      return { verb: 'planned the day', target: '', conflicts: none };
     default:
-      return { text: label, conflicts: none };
+      return { verb: '', target: label, conflicts: none };
   }
 }
 
@@ -103,37 +124,48 @@ function dayHeading(day: string, now: string): string {
   if (day === now) return 'Today';
   const [y = 0, m = 1, d = 1] = now.split('-').map(Number);
   const yesterday = new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
-  return day === yesterday ? 'Yesterday' : fmtDate(day, now);
+  return day === yesterday ? 'Yesterday' : fmtHeaderDate(day);
 }
 
 function UpdateItem({ e, now, at }: { e: UpdateRow; now: string; at: Date }) {
   const revert = useRevert({ inlineError: true });
   const [err, setErr] = useState<string | null>(null);
-  const { text, note, conflicts } = describe(e, now);
+  const { verb, target, detail, note, conflicts } = describe(e, now);
   const revertible = !NOT_REVERTIBLE.has(e.kind);
+  const actor = fmtActor(e.actor);
+  const isYou = e.actor === 'you';
   return (
     <li className="up-row">
+      <span className={`up-avatar${isYou ? ' is-you' : ''}`} aria-hidden="true">
+        {actor.charAt(0).toUpperCase()}
+      </span>
       <div className="up-main">
-        <span className="up-line">
-          <span className="up-actor">{fmtActor(e.actor)}</span>
-          <span className="up-text" dir="auto">
-            {text}
-          </span>
-        </span>
+        <div className="up-line" dir="auto">
+          <span className="up-actor">{actor}</span>
+          {verb && <span className="up-verb"> {verb}</span>}
+          {target && <span className="up-target"> {target}</span>}
+        </div>
+        {detail && (
+          <div className={`up-detail${detail.mono ? ' is-mono' : ''}`}>
+            {detail.icon && <Glyph name={detail.icon} size={13} />}
+            <span dir="auto">{detail.text}</span>
+          </div>
+        )}
         {note && (
-          <span className="up-note" dir="auto">
+          <div className="up-note" dir="auto">
             {note}
-          </span>
+          </div>
         )}
         {conflicts.map((c) => (
-          <span key={c} className="up-risk" dir="auto">
-            {c}
-          </span>
+          <div key={c} className="up-detail up-risk" dir="auto">
+            <Glyph name="cal" size={13} />
+            <span>{c}</span>
+          </div>
         ))}
         {err && (
-          <span className="up-risk" role="alert">
+          <div className="up-detail up-risk" role="alert">
             {err}
-          </span>
+          </div>
         )}
       </div>
       <span className="up-trail">
@@ -160,8 +192,7 @@ function UpdateItem({ e, now, at }: { e: UpdateRow; now: string; at: Date }) {
   );
 }
 
-export function UpdatesTab({ slug }: { slug: string }) {
-  const [actor, setActor] = useState<Actor>('all');
+export function UpdatesTab({ slug, actor }: { slug: string; actor: Actor }) {
   const updates = useUpdates({ project: slug, actor });
   const now = todayStr();
   const at = new Date();
@@ -173,31 +204,28 @@ export function UpdatesTab({ slug }: { slug: string }) {
     else days.push({ day: r.day, rows: [r] });
   }
 
+  if (updates.data && !days.length) {
+    return (
+      <section aria-label="Updates" className="pj-body">
+        <EmptyState icon="commit" title="No activity yet" hint="Changes by you and agents show up here." />
+      </section>
+    );
+  }
+
   return (
-    <section aria-label="Updates" className="pj-body">
-      <div className="up-filter">
-        <Segmented
-          label="Filter updates"
-          options={[
-            { value: 'all', label: 'All' },
-            { value: 'agents', label: 'Agents' },
-            { value: 'you', label: 'You' },
-          ]}
-          value={actor}
-          onChange={setActor}
-        />
+    <section aria-label="Updates" className="pj-body up">
+      <div className="up-feed">
+        {days.map((g) => (
+          <div key={g.day} className="up-day">
+            <h2 className="up-day__title">{dayHeading(g.day, now)}</h2>
+            <ul className="up-list">
+              {g.rows.map((r) => (
+                <UpdateItem key={r.id} e={r} now={now} at={at} />
+              ))}
+            </ul>
+          </div>
+        ))}
       </div>
-      {updates.data && !days.length && <p className="pj-empty">No updates yet</p>}
-      {days.map((g) => (
-        <div key={g.day} className="up-day">
-          <h2 className="up-day__title">{dayHeading(g.day, now)}</h2>
-          <ul className="up-list">
-            {g.rows.map((r) => (
-              <UpdateItem key={r.id} e={r} now={now} at={at} />
-            ))}
-          </ul>
-        </div>
-      ))}
     </section>
   );
 }
