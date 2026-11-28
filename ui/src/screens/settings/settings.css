@@ -265,3 +265,81 @@
   flex: 1;
   min-width: 0;
 }
+
+/* Agents & MCP: endpoint with an editable port, engine-made snippets (token included), quiet token rotation. */
+.gp-set__stack {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--gp-s6);
+}
+.gp-set__mono.is-multi .gp-set__code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.gp-set__endpoint .gp-set__code {
+  display: flex;
+  align-items: center;
+}
+.gp-set__port {
+  width: 5.5ch;
+  height: var(--gp-s22);
+  margin: 0 var(--gp-s2);
+  padding: 0 var(--gp-s4);
+  border: 0;
+  border-radius: var(--gp-r5);
+  background: var(--gp-input);
+  box-shadow: var(--gp-fieldRing);
+  color: var(--gp-text);
+  font: inherit;
+  text-align: center;
+}
+.gp-set__port:hover {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gp-field) 50%, var(--gp-text3));
+}
+.gp-set__port:focus,
+.gp-set__port:focus-visible {
+  outline: none;
+  box-shadow: var(--gp-focus);
+}
+.gp-set__port[aria-invalid='true'] {
+  box-shadow: inset 0 0 0 1px var(--gp-risk);
+}
+.gp-set__note--risk {
+  color: var(--gp-risk);
+}
+.gp-set__tokenline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gp-s12);
+  font-size: var(--gp-fs-meta);
+  line-height: var(--gp-lh-meta);
+  color: var(--gp-text3);
+}
+.gp-set__link {
+  flex: none;
+  height: var(--gp-s22);
+  padding: 0 var(--gp-s6);
+  margin-right: calc(var(--gp-s6) * -1);
+  border: 0;
+  border-radius: var(--gp-r5);
+  background: transparent;
+  color: var(--gp-text2);
+  font: inherit;
+  cursor: pointer;
+}
+.gp-set__link:hover {
+  color: var(--gp-text);
+  background: var(--gp-sel);
+}
+.gp-set__link:focus-visible {
+  outline: none;
+  box-shadow: var(--gp-focus);
+}
+.gp-set__sheet-text {
+  margin: 0;
+  color: var(--gp-text2);
+}

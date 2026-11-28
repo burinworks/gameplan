@@ -1,22 +1,20 @@
-import { useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'wouter';
-import { useConfigureProject, useProject } from '../../api/hooks';
+import { api } from '../../api/client';
+import { useConfigureProject, useProject, useUpdateMilestone } from '../../api/hooks';
 import type { ConfigureProjectBody } from '../../api/hooks';
-import type { Executor, Priority } from '../../api/types';
+import type { Executor, Priority, ProjectTree } from '../../api/types';
 import { paths } from '../../app/routes';
+import { today } from '../../app/today';
 import { useDraft } from '../../lib/draft';
+import { fmtDate } from '../../lib/format';
 import { Button, Field, Icon, Page, Segmented } from '../../ui';
-import { PALETTE } from '../../sheets/NewProject';
+import { PALETTE, nextColour, repoFields } from '../../sheets/NewProject';
 import { ArchiveProjectSheet } from './ArchiveProjectSheet';
 import './project-settings.css';
 
-type Status = 'active' | 'paused' | 'done' | 'dropped';
-const STATUS: { value: Status; label: string }[] = [
-  { value: 'active', label: 'Active' },
-  { value: 'paused', label: 'Paused' },
-  { value: 'done', label: 'Done' },
-  { value: 'dropped', label: 'Dropped' },
-];
 const PRIORITY: { value: Priority; label: string }[] = [
   { value: 'p1', label: 'P1' },
   { value: 'p2', label: 'P2' },
@@ -30,6 +28,9 @@ const EXECUTOR: { value: Executor; label: string }[] = [
 
 type AreaDraft = { id?: string; name: string; color?: string | null };
 
+/** Fallback colour of an area without its own: the palette slot of its position (same as the task pane). */
+const areaFallback = (i: number) => `var(--gp-p${(i % 8) + 1})`;
+
 function SettingRow({ label, id, children }: { label: string; id?: string; children: ReactNode }) {
   return (
     <>
@@ -41,17 +42,32 @@ function SettingRow({ label, id, children }: { label: string; id?: string; child
   );
 }
 
-function SetPanel({ title, className, children }: { title: string; className?: string; children: ReactNode }) {
+function SetPanel({ title, className, aside, children }: { title: string; className?: string; aside?: ReactNode; children: ReactNode }) {
   return (
     <section className={`ps-panel${className ? ` ${className}` : ''}`} aria-label={title}>
-      <h2 className="ps-panel__title">{title}</h2>
+      <div className="ps-panel__head">
+        <h2 className="ps-panel__title">{title}</h2>
+        {aside}
+      </div>
       {children}
     </section>
   );
 }
 
 /** Text field that saves on blur or Enter when the value changed; a refused save restores the server value. */
-function TextSetting({ label, value, onSave, nullable = true }: { label: string; value: string; onSave: (v: string | null) => Promise<unknown>; nullable?: boolean }) {
+function TextSetting({
+  label,
+  value,
+  onSave,
+  nullable = true,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onSave: (v: string | null) => Promise<unknown>;
+  nullable?: boolean;
+  placeholder?: string;
+}) {
   const d = useDraft(value, (v) => {
     const t = v.trim();
     // Nothing to send: put the server value back.
@@ -60,7 +76,7 @@ function TextSetting({ label, value, onSave, nullable = true }: { label: string;
   });
   return (
     <div className="ps-text" onBlur={d.bind.onBlur} onFocus={d.bind.onFocus} onKeyDown={(e) => !e.nativeEvent.isComposing && d.bind.onKeyDown(e)}>
-      <Field label={label} value={d.value} onChange={d.set} />
+      <Field label={label} value={d.value} onChange={d.set} placeholder={placeholder} />
     </div>
   );
 }
@@ -85,81 +101,181 @@ function InlineName({ label, value, onSave }: { label: string; value: string; on
   );
 }
 
-/** Colour swatches. A colour outside the palette (a template's) shows as an extra selected swatch. */
-function ColourSwatches({ value, onChange }: { value: string | null; onChange: (hex: string) => void }) {
-  const cur = value?.toLowerCase() ?? '';
-  const custom = cur && !PALETTE.some((c) => c.hex.toLowerCase() === cur) ? value : null;
+/**
+ * A colour swatch button that opens a palette popover (fixed layer, never clipped).
+ * A colour outside the palette shows as an extra "Current colour" swatch first.
+ */
+export function ColourButton({ label, value, onChange }: { label: string; value: string; onChange: (hex: string) => void }) {
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  const pop = useRef<HTMLDivElement>(null);
+  const open = pos !== null;
+  const cur = value.toLowerCase();
+  const custom = cur.startsWith('#') && !PALETTE.some((c) => c.hex.toLowerCase() === cur) ? value : null;
   const all: { name: string; hex: string }[] = [...(custom ? [{ name: 'Current colour', hex: custom }] : []), ...PALETTE];
+
+  const close = (refocus = true) => {
+    setPos(null);
+    if (refocus) btn.current?.focus();
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const radios = pop.current?.querySelectorAll<HTMLElement>('[role="radio"]');
+    (pop.current?.querySelector<HTMLElement>('[aria-checked="true"]') ?? radios?.[0])?.focus();
+    const down = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (!pop.current?.contains(t) && !btn.current?.contains(t)) setPos(null);
+    };
+    const away = () => setPos(null);
+    document.addEventListener('mousedown', down);
+    window.addEventListener('resize', away);
+    return () => {
+      document.removeEventListener('mousedown', down);
+      window.removeEventListener('resize', away);
+    };
+  }, [open]);
+
+  const toggle = () => {
+    if (open) return close();
+    const r = btn.current!.getBoundingClientRect();
+    setPos({ top: r.bottom + 6, left: r.left - 8 });
+  };
+  const onKeyDown = (e: KeyboardEvent) => {
+    const els = [...(pop.current?.querySelectorAll<HTMLElement>('[role="radio"]') ?? [])];
+    const i = els.indexOf(document.activeElement as HTMLElement);
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      close();
+    } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      e.preventDefault();
+      els[(i + (e.key === 'ArrowRight' ? 1 : -1) + els.length) % els.length]?.focus();
+    } else if (e.key === 'Tab') close(false);
+  };
+
   return (
-    <div className="ps-colors" role="radiogroup" aria-label="Colour">
-      {all.map((c) => (
-        <button
-          key={c.hex}
-          type="button"
-          role="radio"
-          aria-checked={cur === c.hex.toLowerCase()}
-          aria-label={c.name}
-          title={c.name}
-          className="ps-color"
-          style={{ background: c.hex, color: c.hex }}
-          onClick={() => onChange(c.hex)}
-        />
-      ))}
-    </div>
+    <>
+      <button
+        ref={btn}
+        type="button"
+        className="ps-swatch"
+        aria-label={label}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        title="Change colour"
+        style={{ ['--swatch' as string]: value }}
+        onClick={toggle}
+      />
+      {open &&
+        createPortal(
+          <div ref={pop} className="ps-pop" role="dialog" aria-label={label} style={{ top: pos.top, left: pos.left }} onKeyDown={onKeyDown}>
+            <div className="ps-pop__grid" role="radiogroup" aria-label="Colour">
+              {all.map((c) => (
+                <button
+                  key={c.hex}
+                  type="button"
+                  role="radio"
+                  aria-checked={cur === c.hex.toLowerCase()}
+                  aria-label={c.name}
+                  title={c.name}
+                  className="ps-pop__swatch"
+                  style={{ ['--swatch' as string]: c.hex }}
+                  onClick={() => {
+                    if (cur !== c.hex.toLowerCase()) onChange(c.hex);
+                    close();
+                  }}
+                />
+              ))}
+            </div>
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 
 export function ProjectSettings({ slug }: { slug: string }) {
   const proj = useProject(slug);
   const configure = useConfigureProject();
+  const updateMilestone = useUpdateMilestone();
+  const qc = useQueryClient();
   const [confirming, setConfirming] = useState(false);
   const [newArea, setNewArea] = useState<string | null>(null);
-  const [newLabel, setNewLabel] = useState<string | null>(null);
-  const dragFrom = useRef<number | null>(null);
-  const [over, setOver] = useState<number | null>(null);
+  const dragFrom = useRef<string | null>(null);
+  const [over, setOver] = useState<string | null>(null);
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const now = today();
 
   const p = proj.data?.project;
   if (!p) return <section className="gp-page" aria-label="Project settings" />;
+  const milestones = proj.data?.milestones ?? [];
 
   const save = (patch: ConfigureProjectBody) => configure.mutate({ slug, patch });
   const saveAsync = (patch: ConfigureProjectBody) => configure.mutateAsync({ slug, patch });
-  const areas: AreaDraft[] = p.areas.map((a) => ({ id: a.id, name: a.name, color: a.color }));
-  const saveAreas = (list: AreaDraft[]) => save({ areas: list });
-  const reorder = (from: number, to: number) => {
-    if (from === to || to < 0 || to >= areas.length) return;
-    const list = [...areas];
-    const [item] = list.splice(from, 1);
-    list.splice(to, 0, item!);
-    saveAreas(list);
+
+  /**
+   * Area edits always start from the server's current list, never the cached one, so a quick second edit or an
+   * agent's change in between can't drop an area. Edits run one after another.
+   */
+  const editAreas = (change: (list: AreaDraft[]) => AreaDraft[] | null): Promise<unknown> => {
+    const run = queue.current.then(async () => {
+      const fresh = await qc.fetchQuery({ queryKey: ['project', slug], queryFn: () => api<ProjectTree>('GET', `/api/projects/${encodeURIComponent(slug)}`), staleTime: 0 });
+      const next = change(fresh.project.areas.map((a) => ({ id: a.id, name: a.name, color: a.color })));
+      if (!next) return;
+      await saveAsync({ areas: next });
+      await qc.invalidateQueries({ queryKey: ['project', slug] });
+    });
+    queue.current = run.catch(() => undefined);
+    return run;
   };
-  const rename = (i: number, name: string) => saveAsync({ areas: areas.map((a, k) => (k === i ? { ...a, name } : a)) });
+  const quiet = (pr: Promise<unknown>) => void pr.catch(() => undefined);
+  const move = (id: string, toId: string | null, delta = 0) =>
+    quiet(
+      editAreas((list) => {
+        const from = list.findIndex((a) => a.id === id);
+        const to = toId ? list.findIndex((a) => a.id === toId) : from + delta;
+        if (from < 0 || to < 0 || to >= list.length || from === to) return null;
+        const [item] = list.splice(from, 1);
+        list.splice(to, 0, item!);
+        return list;
+      }),
+    );
+  const rename = (id: string, name: string) => editAreas((list) => list.map((a) => (a.id === id ? { ...a, name } : a)));
+  const recolour = (id: string, color: string) => quiet(editAreas((list) => list.map((a) => (a.id === id ? { ...a, color } : a))));
+  const removeArea = (id: string) => quiet(editAreas((list) => list.filter((a) => a.id !== id)));
   const addArea = () => {
     const n = (newArea ?? '').trim();
     if (!n) return;
     setNewArea(null);
-    saveAreas([...areas, { name: n }]);
+    quiet(editAreas((list) => (list.some((a) => a.name.toLowerCase() === n.toLowerCase()) ? null : [...list, { name: n, color: nextColour(list.map((a) => a.color)) }])));
   };
-  const addLabel = () => {
-    const n = (newLabel ?? '').trim();
-    setNewLabel(null);
-    if (n && !p.labels.includes(n)) save({ labels: [...p.labels, n] });
-  };
-  const handleKey = (e: KeyboardEvent, i: number) => {
-    if (e.key === 'ArrowUp') {
+
+  const handleKey = (e: KeyboardEvent, id: string) => {
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       e.preventDefault();
-      reorder(i, i - 1);
-    } else if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      reorder(i, i + 1);
+      move(id, null, e.key === 'ArrowUp' ? -1 : 1);
     }
   };
-  const drop = (e: DragEvent, i: number) => {
+  const drop = (e: DragEvent, id: string) => {
     e.preventDefault();
     const from = dragFrom.current;
     dragFrom.current = null;
     setOver(null);
-    if (from !== null) reorder(from, i);
+    if (from !== null && from !== id) move(from, id);
   };
+
+  /** One Repository value: GitHub owner/repo or URL, or any other repository address. */
+  const repoShown = p.github ?? p.repo ?? '';
+  const saveRepo = (v: string | null) => {
+    const r = repoFields(v ?? '');
+    if (r.github) return saveAsync(p.github === null && p.repo ? { github: r.github, repo: null } : { github: r.github });
+    if (r.repo) return saveAsync({ repo: r.repo, github: null });
+    return saveAsync({ github: null, repo: null });
+  };
+
+  // Done and dropped are engine-only states; the UI treats anything not active as parked.
+  const active = p.status === 'active';
 
   return (
     <Page
@@ -184,31 +300,22 @@ export function ProjectSettings({ slug }: { slug: string }) {
               <SettingRow label="Name">
                 <TextSetting label="Name" value={p.name} nullable={false} onSave={(v) => (v ? saveAsync({ name: v }) : Promise.reject(new Error('empty name')))} />
               </SettingRow>
-              <SettingRow label="Colour">
-                <ColourSwatches value={p.color} onChange={(hex) => save({ color: hex })} />
-              </SettingRow>
               <SettingRow label="Status">
-                <Segmented label="Status" options={STATUS} value={p.status} onChange={(status) => save({ status })} />
+                <div className="ps-status">
+                  <span className={`ps-state${active ? '' : ' is-paused'}`}>
+                    <span className="ps-state__dot" aria-hidden="true" />
+                    {active ? 'Active' : 'Paused'}
+                  </span>
+                  <span className="ps-status__actions">
+                    <button type="button" className="ps-btn" onClick={() => save({ status: active ? 'paused' : 'active' })}>
+                      {active ? 'Pause' : 'Resume'}
+                    </button>
+                    <button type="button" className="ps-btn ps-btn--danger" aria-label="Archive project" onClick={() => setConfirming(true)}>
+                      Archive
+                    </button>
+                  </span>
+                </div>
               </SettingRow>
-            </div>
-          </SetPanel>
-
-          <SetPanel title="Links">
-            <div className="ps-grid">
-              <SettingRow label="Vault note">
-                <TextSetting label="Vault note" value={p.vaultNote ?? ''} onSave={(v) => saveAsync({ vaultNote: v })} />
-              </SettingRow>
-              <SettingRow label="Repository">
-                <TextSetting label="Repository" value={p.repo ?? ''} onSave={(v) => saveAsync({ repo: v })} />
-              </SettingRow>
-              <SettingRow label="GitHub">
-                <TextSetting label="GitHub" value={p.github ?? ''} onSave={(v) => saveAsync({ github: v })} />
-              </SettingRow>
-            </div>
-          </SetPanel>
-
-          <SetPanel title="New tasks">
-            <div className="ps-grid">
               <SettingRow label="Priority">
                 <Segmented label="Priority" options={PRIORITY} value={p.defaultPriority} onChange={(defaultPriority) => save({ defaultPriority })} />
               </SettingRow>
@@ -216,23 +323,52 @@ export function ProjectSettings({ slug }: { slug: string }) {
                 <Segmented label="Done by" options={EXECUTOR} value={p.defaultExecutor} onChange={(defaultExecutor) => save({ defaultExecutor })} />
               </SettingRow>
             </div>
+            <p className="ps-hint">Priority and Done by are the defaults for new tasks.</p>
+          </SetPanel>
+
+          <SetPanel title="Links">
+            <div className="ps-grid">
+              <SettingRow label="Repository">
+                <TextSetting label="Repository" value={repoShown} placeholder="owner/repo or URL" onSave={saveRepo} />
+              </SettingRow>
+            </div>
           </SetPanel>
         </div>
 
         <div className="ps-col">
-          <SetPanel title="Areas" className="ps-panel--areas">
+          <SetPanel title="Milestones" className="ps-panel--list">
+            {milestones.length === 0 ? (
+              <p className="ps-empty">No milestones yet. Add one from the timeline.</p>
+            ) : (
+              <ul className="ps-list" aria-label="Milestones">
+                {milestones.map((m) => (
+                  <li key={m.id} className={`ps-item${m.status === 'done' ? ' is-done' : ''}`}>
+                    <ColourButton label={`Colour of ${m.name}`} value={m.color ?? PALETTE[0].hex} onChange={(color) => updateMilestone.mutate({ id: m.id, patch: { color } })} />
+                    <span className="ps-item__name" dir="auto" title={m.name}>
+                      {m.name}
+                    </span>
+                    <span className="ps-item__meta num">{m.due ? fmtDate(m.due, now) : 'No date'}</span>
+                    <span className="ps-item__count num">{m.tasks.length === 1 ? '1 task' : `${m.tasks.length} tasks`}</span>
+                    <span className="ps-item__end" aria-hidden="true" />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </SetPanel>
+
+          <SetPanel title="Areas" className="ps-panel--list">
             <div className="ps-areas">
               {p.areas.map((a, i) => (
                 <div
-                  className={`ps-area${over === i ? ' is-over' : ''}`}
+                  className={`ps-area${over === a.id ? ' is-over' : ''}`}
                   key={a.id}
                   onDragOver={(e) => {
                     if (dragFrom.current === null) return;
                     e.preventDefault();
-                    setOver(i);
+                    setOver(a.id);
                   }}
-                  onDragLeave={() => setOver((o) => (o === i ? null : o))}
-                  onDrop={(e) => drop(e, i)}
+                  onDragLeave={() => setOver((o) => (o === a.id ? null : o))}
+                  onDrop={(e) => drop(e, a.id)}
                 >
                   <button
                     type="button"
@@ -240,9 +376,9 @@ export function ProjectSettings({ slug }: { slug: string }) {
                     draggable
                     aria-label={`Reorder ${a.name}`}
                     title="Drag, or use the arrow keys"
-                    onKeyDown={(e) => handleKey(e, i)}
+                    onKeyDown={(e) => handleKey(e, a.id)}
                     onDragStart={(e) => {
-                      dragFrom.current = i;
+                      dragFrom.current = a.id;
                       e.dataTransfer.effectAllowed = 'move';
                       const row = e.currentTarget.parentElement;
                       if (row) e.dataTransfer.setDragImage(row, 0, 0);
@@ -261,9 +397,9 @@ export function ProjectSettings({ slug }: { slug: string }) {
                       <circle cx="15" cy="18" r="1.6" />
                     </svg>
                   </button>
-                  <span className="ps-area__swatch" style={{ background: a.color ?? p.color ?? 'var(--gp-text3)' }} aria-hidden="true" />
-                  <InlineName label={`Area ${a.name}`} value={a.name} onSave={(v) => rename(i, v)} />
-                  <span className="ps-area__count num">{a.tasks === 1 ? '1 task' : `${a.tasks} tasks`}</span>
+                  <ColourButton label={`Colour of ${a.name}`} value={a.color ?? areaFallback(i)} onChange={(hex) => recolour(a.id, hex)} />
+                  <InlineName label={`Area ${a.name}`} value={a.name} onSave={(v) => rename(a.id, v)} />
+                  <span className="ps-item__count num">{a.tasks === 1 ? '1 task' : `${a.tasks} tasks`}</span>
                   <Button
                     variant="icon"
                     icon="close"
@@ -271,7 +407,7 @@ export function ProjectSettings({ slug }: { slug: string }) {
                     label={`Delete ${a.name}`}
                     disabled={a.tasks > 0}
                     title={a.tasks > 0 ? 'Move its tasks to another area first' : undefined}
-                    onClick={() => saveAreas(areas.filter((x) => x.id !== a.id))}
+                    onClick={() => removeArea(a.id)}
                   />
                 </div>
               ))}
@@ -282,57 +418,11 @@ export function ProjectSettings({ slug }: { slug: string }) {
                 </button>
               ) : (
                 <div className="ps-addfield">
-                  <Field
-                    label="New area"
-                    value={newArea}
-                    onChange={setNewArea}
-                    onEnter={addArea}
-                    placeholder="New area"
-                    submitHint="Add"
-                    autoFocus
-                  />
+                  <Field label="New area" value={newArea} onChange={setNewArea} onEnter={addArea} placeholder="New area" submitHint="Add" autoFocus />
                 </div>
               )}
             </div>
           </SetPanel>
-
-          <SetPanel title="Labels">
-            <div className="ps-labels">
-              {p.labels.map((l) => (
-                <span className="ps-chip" key={l}>
-                  <span dir="auto">{l}</span>
-                  <button type="button" className="ps-chip__x" aria-label={`Remove ${l}`} onClick={() => save({ labels: p.labels.filter((x) => x !== l) })}>
-                    <Icon name="close" size={10} />
-                  </button>
-                </span>
-              ))}
-              {newLabel === null ? (
-                <button type="button" className="ps-plus" aria-label="Add label" onClick={() => setNewLabel('')}>
-                  <Icon name="plus" size={12} />
-                </button>
-              ) : (
-                <div className="ps-addfield ps-addfield--label">
-                  <Field
-                    label="New label"
-                    value={newLabel}
-                    onChange={setNewLabel}
-                    onEnter={addLabel}
-                    placeholder="New label"
-                    submitHint="Add"
-                    compact
-                    autoFocus
-                  />
-                </div>
-              )}
-            </div>
-          </SetPanel>
-
-          <section className="ps-panel ps-panel--row" aria-label="Archive">
-            <h2 className="ps-panel__title">Archive project</h2>
-            <button type="button" className="ps-danger" aria-label="Archive project" onClick={() => setConfirming(true)}>
-              Archive
-            </button>
-          </section>
         </div>
       </div>
 
@@ -340,3 +430,4 @@ export function ProjectSettings({ slug }: { slug: string }) {
     </Page>
   );
 }
+

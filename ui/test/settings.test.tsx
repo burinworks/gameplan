@@ -13,9 +13,28 @@ function Line() {
   return <output data-testid="line">{useErrorLine()}</output>;
 }
 
-function setup(refuse = false) {
+const connectFor = (token: string, port = 4747) => {
+  const endpoint = `http://127.0.0.1:${port}/mcp`;
+  return {
+    endpoint,
+    token,
+    snippets: {
+      claudeCode: `claude mcp add --transport http gameplan ${endpoint} --header "Authorization: Bearer ${token}"`,
+      codex: `[mcp_servers.gameplan]\nurl = "${endpoint}"`,
+      cursor: `{ "url": "${endpoint}" }`,
+      geminiCli: `gemini mcp add ${endpoint}`,
+      claudeDesktop: `mcp-remote ${endpoint}`,
+      chatgpt: `Authorization: Bearer ${token}`,
+      other: `URL: ${endpoint}`,
+    },
+  };
+};
+
+function setup(refuse = false, info: { port: number; configuredPort: number } = { port: 4747, configuredPort: 4747 }) {
   vi.stubGlobal('matchMedia', () => ({ matches: false }));
   let state = { ...settingsFixture };
+  let token = 'tok-one';
+  let configured = info.configuredPort;
   const fetchFn = mockFetch({
     '/api/settings': () => state,
     'PATCH /api/settings': ({ body }: { body: Record<string, unknown> }) => {
@@ -23,9 +42,15 @@ function setup(refuse = false) {
       const { mcp_token, ...rest } = body;
       state = { ...state, ...rest } as typeof state;
       if (mcp_token !== undefined) state.mcp_token_set = mcp_token !== null;
+      if (typeof body.port === 'number') configured = body.port;
       return state;
     },
-    '/api/info': { dbPath: '/home/sam/.local/share/Gameplan/gameplan.db', version: '1.0.0' },
+    '/api/info': () => ({ dbPath: '/home/sam/.local/share/Gameplan/gameplan.db', version: '1.0.0', port: info.port, configuredPort: configured }),
+    '/api/mcp/connect': () => connectFor(token, info.port),
+    'POST /api/mcp/token/rotate': () => {
+      token = 'tok-two';
+      return connectFor(token, info.port);
+    },
     '/api/agents': () => agentsFixture(new Date()),
     '/api/backup': { last: { file: 'gameplan-2026-11-27.json', at: new Date(Date.now() - 3 * 3_600_000).toISOString() } },
     'POST /api/backup': { last: { file: 'gameplan-2026-11-27.json', at: new Date().toISOString() } },
@@ -61,24 +86,49 @@ describe('AppSettings', () => {
     await waitFor(() => expect(screen.getByRole('radio', { name: 'Dark' })).toHaveAttribute('aria-checked', 'true'));
   });
 
-  it('generates an MCP token, shows it once, then reads Token set', async () => {
-    const f = setup();
-    await userEvent.click(await screen.findByRole('button', { name: 'Generate' }));
-    await waitFor(() => expect(patches(f).some((p) => typeof p.mcp_token === 'string')).toBe(true));
-    const token = patches(f).find((p) => typeof p.mcp_token === 'string')!.mcp_token as string;
-    expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(await screen.findByText(token)).toBeInTheDocument();
-    expect(await screen.findByText('Token set')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Replace' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
+  it('the connect command already carries the token; there is no Generate step', async () => {
+    setup();
+    expect(await screen.findByText('claude mcp add --transport http gameplan http://127.0.0.1:4747/mcp --header "Authorization: Bearer tok-one"')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Generate' })).toBeNull();
+    expect(screen.queryByText('MCP token')).toBeNull();
   });
 
-  it('removes the token', async () => {
+  it('rotating the token asks first, then shows the new command', async () => {
     const f = setup();
-    await userEvent.click(await screen.findByRole('button', { name: 'Generate' }));
-    await userEvent.click(await screen.findByRole('button', { name: 'Remove' }));
-    await waitFor(() => expect(patches(f)).toContainEqual({ mcp_token: null }));
-    expect(await screen.findByRole('button', { name: 'Generate' })).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('button', { name: 'Rotate token' }));
+    expect(f.mock.calls.some(([u, i]) => String(u) === '/api/mcp/token/rotate' && (i as RequestInit | undefined)?.method === 'POST')).toBe(false);
+    const sheet = screen.getByRole('dialog', { name: 'Rotate the MCP token?' });
+    expect(within(sheet).getByText(/copy the new connect command/)).toBeInTheDocument();
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Rotate token' }));
+    expect(await screen.findByText(/Bearer tok-two/)).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Rotate the MCP token?' })).toBeNull();
+  });
+
+  it('saves a new port and says a restart is needed', async () => {
+    const f = setup();
+    const port = await screen.findByRole('textbox', { name: 'Port' });
+    expect(port).toHaveValue('4747');
+    expect(screen.queryByText(/Restart Gameplan/)).toBeNull();
+    await userEvent.clear(port);
+    await userEvent.type(port, '4800{Enter}');
+    await waitFor(() => expect(patches(f)).toContainEqual({ port: 4800 }));
+    expect(await screen.findByText('Restart Gameplan to use port 4800')).toBeInTheDocument();
+  });
+
+  it('refuses a port outside 1024–65535 without saving', async () => {
+    const f = setup();
+    const port = await screen.findByRole('textbox', { name: 'Port' });
+    await userEvent.clear(port);
+    await userEvent.type(port, '80');
+    expect(screen.getByText('Use a port from 1024 to 65535')).toBeInTheDocument();
+    await userEvent.tab();
+    expect(patches(f).some((p) => 'port' in p)).toBe(false);
+    await waitFor(() => expect(port).toHaveValue('4747'));
+  });
+
+  it('shows the restart note when the saved port differs from the running one', async () => {
+    setup(false, { port: 4747, configuredPort: 4900 });
+    expect(await screen.findByText('Restart Gameplan to use port 4900')).toBeInTheDocument();
   });
 
   it('lists connected agents with time and calls', async () => {
@@ -90,9 +140,10 @@ describe('AppSettings', () => {
 
   it('shows the connect snippet per client and saves toggles', async () => {
     const f = setup();
-    expect(await screen.findByText('claude mcp add --transport http gameplan http://127.0.0.1:4747/mcp')).toBeInTheDocument();
+    expect(await screen.findByText(/^claude mcp add --transport http gameplan http:\/\/127\.0\.0\.1:4747\/mcp/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('radio', { name: 'ChatGPT' }));
-    expect(screen.getByText('Needs an HTTPS tunnel and an MCP token')).toBeInTheDocument();
+    expect(screen.getByText('Needs an HTTPS tunnel to this Mac')).toBeInTheDocument();
+    expect(screen.getByText('Authorization: Bearer tok-one')).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('switch', { name: 'Agents can archive' }));
     await waitFor(() => expect(patches(f)).toContainEqual({ agents_can_archive: true }));
   });
@@ -152,8 +203,10 @@ describe('AppSettings', () => {
 
   it('shows the endpoint in a mono field with Copy, and the backup summary', async () => {
     setup();
-    const endpoint = await screen.findByText('http://127.0.0.1:4747/mcp');
-    expect(within(endpoint.closest('.gp-set__mono') as HTMLElement).getByRole('button', { name: 'Copy' })).toBeInTheDocument();
+    const port = await screen.findByRole('textbox', { name: 'Port' });
+    const mono = port.closest('.gp-set__mono') as HTMLElement;
+    expect(mono).toHaveTextContent('http://127.0.0.1:/mcp');
+    expect(within(mono).getByRole('button', { name: 'Copy' })).toBeInTheDocument();
     expect(await screen.findByText(/Daily · last 30 kept · backed up 3 h ago/)).toBeInTheDocument();
   });
 });

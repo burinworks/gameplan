@@ -34,6 +34,41 @@
   background: var(--gp-panel);
 }
 
+/* Empty state: a 48px tile with a 24px glyph, title and one hint line. */
+.pa__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--gp-s6);
+  padding: var(--gp-s24) var(--gp-s16);
+  text-align: center;
+}
+.pa__empty-icon {
+  display: grid;
+  place-items: center;
+  width: calc(var(--gp-s24) * 2);
+  height: calc(var(--gp-s24) * 2);
+  margin-bottom: var(--gp-s6);
+  border-radius: var(--gp-r12);
+  background: var(--gp-sel);
+  color: var(--gp-text2);
+}
+.pa__empty-title,
+.pa__empty-hint {
+  margin: 0;
+}
+.pa__empty-title {
+  font-size: var(--gp-fs-sheet);
+  line-height: var(--gp-lh-sheet);
+  font-weight: var(--gp-fw-semibold);
+}
+.pa__empty-hint {
+  max-width: calc(var(--gp-sidebar) * 1.5);
+  font-size: var(--gp-fs-small);
+  line-height: var(--gp-lh-small);
+  color: var(--gp-text2);
+}
+
 .pa__row {
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 0.9fr) auto;
@@ -61,15 +96,6 @@
 .pa__name--muted {
   color: var(--gp-text2);
 }
-.pa__swatch {
-  flex: none;
-  width: var(--gp-s10);
-  height: var(--gp-s10);
-  border-radius: var(--gp-r3);
-}
-.pa__swatch--muted {
-  background: var(--gp-track);
-}
 .pa__strong,
 .pa__medium,
 .pa__ellipsis {
@@ -92,6 +118,7 @@
   width: var(--gp-diamondSm);
   height: var(--gp-diamondSm);
   border-radius: var(--gp-r2);
+  background: var(--gp-text3);
   transform: rotate(45deg);
 }
 .pa__progress {

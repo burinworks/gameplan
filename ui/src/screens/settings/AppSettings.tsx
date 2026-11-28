@@ -1,16 +1,15 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { ApiError } from '../../api/client';
-import { useAgents, useBackup, useBackupNow, useInfo, usePatchSettings, useSettings } from '../../api/hooks';
+import { useAgents, useBackup, useBackupNow, useInfo, useMcpConnect, usePatchSettings, useRotateToken, useSettings, type McpConnect } from '../../api/hooks';
 import type { PublicSettings } from '../../api/types';
 import { errorLine, fmtAgo } from '../../lib/format';
 import { applyTheme } from '../../theme';
 import { useDraft } from '../../lib/draft';
-import { Button, Field, Page, Segmented, Toggle } from '../../ui';
+import { Button, Field, Page, Segmented, Sheet, Toggle } from '../../ui';
 import '../../ui/primitives.css';
 import './settings.css';
 
-const ENDPOINT = 'http://127.0.0.1:4747/mcp';
 const ACCENTS = [
   { name: 'Blue', hex: '#2F6BF0' },
   { name: 'Graphite', hex: '#3a3a3f' },
@@ -25,36 +24,21 @@ export function dbFolder(dbPath: string): string {
   return dir.replace(/^(\/Users\/[^/]+|\/home\/[^/]+|[A-Za-z]:\\Users\\[^\\]+)(?=[\\/]|$)/, '~');
 }
 
-type Client = 'claude-code' | 'codex' | 'cursor' | 'gemini' | 'desktop' | 'chatgpt' | 'other';
+type Client = keyof McpConnect['snippets'];
 
-/** Connect snippets, copied from README.md "Connect an agent". */
-const CONNECT: Record<Client, { label: string; note?: string; snippet: string }> = {
-  'claude-code': { label: 'Claude Code', snippet: `claude mcp add --transport http gameplan ${ENDPOINT}` },
-  codex: { label: 'Codex', snippet: `codex mcp add gameplan --url ${ENDPOINT}` },
-  cursor: { label: 'Cursor', snippet: `{ "mcpServers": { "gameplan": { "url": "${ENDPOINT}" } } }` },
-  gemini: { label: 'Gemini CLI', snippet: `gemini mcp add --transport http gameplan ${ENDPOINT}` },
-  desktop: {
-    label: 'Claude Desktop',
-    snippet: `{ "mcpServers": { "gameplan": { "command": "npx", "args": ["-y", "mcp-remote", "${ENDPOINT}"] } } }`,
-  },
-  chatgpt: {
-    label: 'ChatGPT',
-    note: 'Needs an HTTPS tunnel and an MCP token',
-    snippet: `ingress:
-  - hostname: gameplan.example.com
-    path: ^/mcp
-    service: http://127.0.0.1:4747
-  - service: http_status:404`,
-  },
-  other: { label: 'Other', snippet: ENDPOINT },
-};
-const CLIENTS = (Object.keys(CONNECT) as Client[]).map((value) => ({ value, label: CONNECT[value].label }));
+/** Client tabs in display order. Snippets come from the engine, with the endpoint and token already filled in. */
+const CLIENTS: { value: Client; label: string; note?: string }[] = [
+  { value: 'claudeCode', label: 'Claude Code' },
+  { value: 'codex', label: 'Codex' },
+  { value: 'cursor', label: 'Cursor' },
+  { value: 'geminiCli', label: 'Gemini CLI' },
+  { value: 'claudeDesktop', label: 'Claude Desktop' },
+  { value: 'chatgpt', label: 'ChatGPT', note: 'Needs an HTTPS tunnel to this Mac' },
+  { value: 'other', label: 'Other' },
+];
 
-function newToken(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
+const MIN_PORT = 1024;
+const MAX_PORT = 65535;
 
 const copy = (text: string) => void navigator.clipboard?.writeText(text).catch(() => undefined);
 
@@ -113,6 +97,69 @@ function TextSetting({ label, value, onSave }: { label: string; value: string; o
   );
 }
 
+/**
+ * The MCP endpoint with its port editable in place. Saves `port` on blur or Enter; the engine keeps listening on
+ * the old port until restarted, so a pending change shows a restart note.
+ */
+function Endpoint({ endpoint, port, configured, onSave }: { endpoint: string; port: number; configured: number; onSave: (p: number) => Promise<boolean> }) {
+  const at = endpoint.lastIndexOf(`:${port}`);
+  const head = at >= 0 ? endpoint.slice(0, at + 1) : `${endpoint.replace(/\/mcp$/, '')}:`;
+  const tail = at >= 0 ? endpoint.slice(at + 1 + String(port).length) : '/mcp';
+  const d = useDraft(String(configured), (v) => {
+    const n = Number(v.trim());
+    if (!Number.isInteger(n) || n < MIN_PORT || n > MAX_PORT) return Promise.reject(new Error('bad port'));
+    if (n === configured) return Promise.reject(new Error('nothing to save'));
+    return onSave(n).then((ok) => (ok ? true : Promise.reject(new Error('refused'))));
+  });
+  const n = Number(d.value);
+  const invalid = d.value.trim() !== '' && (!Number.isInteger(n) || n < MIN_PORT || n > MAX_PORT);
+  return (
+    <div className="gp-set__stack">
+      <div className="gp-set__mono gp-set__endpoint">
+        <span className="gp-set__code">
+          {head}
+          <input
+            className="gp-set__port num"
+            aria-label="Port"
+            inputMode="numeric"
+            aria-invalid={invalid || undefined}
+            value={d.value}
+            size={5}
+            maxLength={5}
+            onChange={(e) => d.set(e.target.value.replace(/[^0-9]/g, ''))}
+            onFocus={d.bind.onFocus}
+            onBlur={d.bind.onBlur}
+            onKeyDown={(e) => !e.nativeEvent.isComposing && d.bind.onKeyDown(e)}
+          />
+          {tail}
+        </span>
+        <button type="button" className="gp-set__copy" onClick={() => copy(`${head}${configured}${tail}`)}>
+          Copy
+        </button>
+      </div>
+      {invalid && <p className="gp-set__note gp-set__note--risk">Use a port from 1024 to 65535</p>}
+      {!invalid && configured !== port && <p className="gp-set__note">{`Restart Gameplan to use port ${configured}`}</p>}
+    </div>
+  );
+}
+
+function RotateSheet({ onClose, onRotate, busy }: { onClose: () => void; onRotate: () => void; busy: boolean }) {
+  return (
+    <Sheet
+      title="Rotate the MCP token?"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" label="Cancel" onClick={onClose} />
+          <Button variant="primary" label="Rotate token" disabled={busy} onClick={onRotate} />
+        </>
+      }
+    >
+      <p className="gp-set__sheet-text">Connected agents stop working until you copy the new connect command into each of them.</p>
+    </Sheet>
+  );
+}
+
 /** "2 min ago" style, longer than the shared short form. */
 function agoLong(iso: string, now: Date): string {
   const min = Math.floor((now.getTime() - new Date(iso).getTime()) / 60_000);
@@ -131,8 +178,10 @@ export function AppSettings() {
   const backup = useBackup();
   const backupNow = useBackupNow();
   const info = useInfo();
-  const [client, setClient] = useState<Client>('claude-code');
-  const [shownToken, setShownToken] = useState<string | null>(null);
+  const connect = useMcpConnect();
+  const rotate = useRotateToken();
+  const [client, setClient] = useState<Client>('claudeCode');
+  const [rotating, setRotating] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const s = settings.data;
@@ -161,14 +210,22 @@ export function AppSettings() {
   const theme = (over: Partial<{ appearance: 'system' | 'light' | 'dark'; accent: string }>) =>
     applyTheme({ appearance: (s.appearance as 'system' | 'light' | 'dark') ?? 'system', accent: s.accent, ...over });
 
-  const generate = () => {
-    const token = newToken();
-    void save('mcp_token', { mcp_token: token }, () => setShownToken(token));
-  };
+  const savePort = (port: number) =>
+    save('port', { port }, () => {
+      void qc.invalidateQueries({ queryKey: ['info'] });
+    });
+  const doRotate = () =>
+    rotate.mutate(undefined, {
+      onSuccess: (fresh) => {
+        qc.setQueryData(['mcpConnect'], fresh);
+        setRotating(false);
+      },
+    });
 
   const now = new Date();
   const last = backup.data?.last ?? null;
-  const c = CONNECT[client];
+  const c = CLIENTS.find((x) => x.value === client)!;
+  const snippet = connect.data?.snippets[client];
 
   return (
     <Page title="Settings" label="Settings" roomy padded bodyClassName="gp-set">
@@ -274,42 +331,33 @@ export function AppSettings() {
             }
           >
             <div className="gp-set__grid gp-set__grid--narrow">
-              <SettingRow label="Endpoint">
-                <Mono text={ENDPOINT} />
+              <SettingRow label="Endpoint" error={errors.port}>
+                {connect.data && info.data ? (
+                  <Endpoint endpoint={connect.data.endpoint} port={info.data.port} configured={info.data.configuredPort ?? info.data.port} onSave={savePort} />
+                ) : (
+                  <div className="gp-set__mono" />
+                )}
               </SettingRow>
               <SettingRow label="Connect">
                 <div className="gp-set__connect">
-                  <Segmented label="Connect" value={client} options={CLIENTS} onChange={setClient} />
+                  <Segmented label="Connect" value={client} options={CLIENTS.map(({ value, label }) => ({ value, label }))} onChange={setClient} />
                 </div>
               </SettingRow>
               <span />
-              <div className="gp-set__control">
+              <div className="gp-set__control gp-set__stack">
                 {c.note && (
                   <p className="gp-set__note" dir="auto">
                     {c.note}
                   </p>
                 )}
-                <Mono text={c.snippet} />
+                {snippet !== undefined ? <Mono text={snippet} /> : <div className="gp-set__mono" />}
+                <div className="gp-set__tokenline">
+                  <span>Includes your access token.</span>
+                  <button type="button" className="gp-set__link" onClick={() => setRotating(true)}>
+                    Rotate token
+                  </button>
+                </div>
               </div>
-              <SettingRow label="MCP token" error={errors.mcp_token}>
-                {s.mcp_token_set ? (
-                  <span className="gp-set__token">
-                    <span className="gp-set__status">Token set</span>
-                    <Button variant="quiet" label="Replace" onClick={generate} />
-                    <Button variant="quiet" label="Remove" onClick={() => void save('mcp_token', { mcp_token: null }, () => setShownToken(null))} />
-                  </span>
-                ) : (
-                  <Button variant="secondary" label="Generate" onClick={generate} />
-                )}
-              </SettingRow>
-              {shownToken && (
-                <>
-                  <span />
-                  <div className="gp-set__control">
-                    <Mono text={shownToken} />
-                  </div>
-                </>
-              )}
             </div>
 
             <div className="gp-set__agents" aria-label="Connected agents">
@@ -373,6 +421,7 @@ export function AppSettings() {
           </SetPanel>
         </div>
       </div>
+      {rotating && <RotateSheet busy={rotate.isPending} onClose={() => setRotating(false)} onRotate={doRotate} />}
     </Page>
   );
 }

@@ -67,6 +67,9 @@ export function ListTab({ slug }: { slug: string }) {
   }
 
   const isOpen = (m: TreeMilestone) => toggled[m.id] ?? m.status !== 'done';
+  // An area without its own colour takes the palette slot of its position, as in settings and the task pane.
+  const areaSlot = new Map((project.data?.project.areas ?? []).map((a, i) => [a.id, i]));
+  const areaColour = (a: { id: string; color: string | null }) => a.color ?? `var(--gp-p${((areaSlot.get(a.id) ?? 0) % 8) + 1})`;
 
   return (
     <section aria-label="List" className="pj-body">
@@ -112,7 +115,7 @@ export function ListTab({ slug }: { slug: string }) {
                     <span className={`pl-group__chev${open ? '' : ' is-closed'}`}>
                       <Icon name="chevronDown" size={12} />
                     </span>
-                    <span className="pl-group__diamond" aria-hidden="true" style={done ? undefined : { background: project.data?.project.color ?? undefined }} />
+                    <span className="pl-group__diamond" aria-hidden="true" style={done ? undefined : { background: m.color ?? undefined }} />
                     <span className="pl-group__name" dir="auto">
                       {m.name}
                     </span>
@@ -140,7 +143,7 @@ export function ListTab({ slug }: { slug: string }) {
                       <td role="cell" className="pl-area">
                         {t.area ? (
                           <>
-                            <span className="pl-area__swatch" aria-hidden="true" style={{ background: t.area.color ?? undefined }} />
+                            <span className="pl-area__swatch" aria-hidden="true" style={{ background: areaColour(t.area) }} />
                             <span className="pl-area__name">{t.area.name}</span>
                           </>
                         ) : (

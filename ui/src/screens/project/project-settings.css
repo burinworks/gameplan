@@ -1,6 +1,7 @@
 /* Project settings: two columns of panels inside <Page>. Grid widths are token multiples. */
 .ps-cols {
   --ps-label: calc(var(--gp-s22) * 5); /* 110 */
+  --ps-rowH: calc(var(--gp-s18) * 2); /* 36: list rows */
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--gp-s16);
@@ -28,10 +29,7 @@
 .ps-crumb:focus-visible,
 .ps-area__handle:focus-visible,
 .ps-addrow:focus-visible,
-.ps-plus:focus-visible,
-.ps-chip__x:focus-visible,
-.ps-color:focus-visible,
-.ps-danger:focus-visible {
+.ps-btn:focus-visible {
   outline: none;
   box-shadow: var(--gp-focus);
 }
@@ -48,15 +46,15 @@
   border-radius: var(--gp-r12);
   background: var(--gp-panel);
 }
-.ps-panel--areas {
+.ps-panel--list {
   gap: var(--gp-s8);
-  padding-bottom: var(--gp-s10);
+  padding-bottom: var(--gp-s12);
 }
-.ps-panel--row {
-  flex-direction: row;
+.ps-panel__head {
+  display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--gp-s14) var(--gp-s20);
+  gap: var(--gp-s12);
 }
 .ps-panel__title {
   margin: 0;
@@ -83,49 +81,198 @@
   flex: 1;
   min-width: 0;
 }
-.ps-colors {
+.ps-hint {
+  margin: 0;
+  padding-left: var(--ps-label);
+  font-size: var(--gp-fs-meta);
+  line-height: var(--gp-lh-meta);
+  color: var(--gp-text3);
+}
+
+/* Status: current state, then Pause/Resume and Archive. */
+.ps-status {
+  flex: 1;
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gp-s12);
+  min-width: 0;
+}
+.ps-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gp-s6);
+  font-weight: var(--gp-fw-medium);
+}
+.ps-state__dot {
+  width: var(--gp-dot);
+  height: var(--gp-dot);
+  border-radius: 50%;
+  background: var(--gp-ok);
+}
+.ps-state.is-paused .ps-state__dot {
+  background: var(--gp-text3);
+}
+.ps-status__actions {
+  display: inline-flex;
+  gap: var(--gp-s8);
+}
+.ps-btn {
+  height: var(--gp-control);
+  padding: 0 var(--gp-s12);
+  border: 0;
+  border-radius: var(--gp-r7);
+  background: transparent;
+  box-shadow: var(--gp-fieldRing);
+  color: var(--gp-text);
+  font: inherit;
+  font-weight: var(--gp-fw-medium);
+  cursor: pointer;
+  transition: background var(--gp-fast);
+}
+.ps-btn:hover {
+  background: var(--gp-sel);
+}
+.ps-btn--danger {
+  color: var(--gp-risk);
+}
+
+/* Milestone and area rows share one shape: swatch, name, meta, count. */
+.ps-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ps-item,
+.ps-area {
+  display: flex;
+  align-items: center;
+  gap: var(--gp-s10);
+  height: var(--ps-rowH);
+  padding: 0 var(--gp-s10);
+  margin: 0 calc(var(--gp-s10) * -1);
+  border-radius: var(--gp-r8);
+}
+.ps-item:hover,
+.ps-area:hover,
+.ps-area.is-over {
+  background: var(--gp-rowSel);
+}
+.ps-item__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ps-item.is-done .ps-item__name {
+  color: var(--gp-text3);
+}
+.ps-item__meta {
+  flex: none;
+  font-size: var(--gp-fs-meta);
+  color: var(--gp-text2);
+}
+.ps-item__count {
+  flex: none;
+  min-width: calc(var(--gp-s28) * 2);
+  text-align: right;
+  font-size: var(--gp-fs-meta);
+  color: var(--gp-text3);
+}
+.ps-empty {
+  margin: 0;
+  padding: var(--gp-s4) 0 var(--gp-s6);
+  font-size: var(--gp-fs-small);
+  line-height: var(--gp-lh-small);
+  color: var(--gp-text3);
+}
+
+/* Colour swatch button and its palette popover. */
+.ps-swatch {
+  flex: none;
+  position: relative;
+  width: var(--gp-s12);
+  height: var(--gp-s12);
+  padding: 0;
+  border: 0;
+  border-radius: var(--gp-r3);
+  background: var(--swatch);
+  cursor: pointer;
+  transition: transform var(--gp-fast);
+}
+/* Larger hit area than the visible square. */
+.ps-swatch::after {
+  content: '';
+  position: absolute;
+  inset: calc(var(--gp-s6) * -1);
+}
+.ps-swatch:hover {
+  transform: scale(1.15);
+}
+.ps-swatch:focus-visible,
+.ps-swatch[aria-expanded='true'] {
+  outline: none;
+  box-shadow:
+    0 0 0 var(--gp-s2) var(--gp-panelSolid),
+    0 0 0 var(--gp-s4) color-mix(in srgb, var(--gp-accent) 55%, transparent);
+}
+.ps-pop {
+  position: fixed;
+  z-index: var(--gp-z-menu);
+  padding: var(--gp-s8);
+  border-radius: var(--gp-r10);
+  background: var(--gp-menu);
+  -webkit-backdrop-filter: var(--gp-blur-menu);
+  backdrop-filter: var(--gp-blur-menu);
+  box-shadow: var(--gp-shadow-sheet);
+  animation: gp-pop var(--gp-fast) both;
+}
+.ps-pop__grid {
+  display: grid;
+  grid-template-columns: repeat(4, var(--gp-s22));
   gap: var(--gp-s8);
   padding: var(--gp-s4);
 }
-.ps-color {
+.ps-pop__swatch {
   width: var(--gp-s22);
   height: var(--gp-s22);
   padding: 0;
   border: 0;
   border-radius: var(--gp-r7);
+  background: var(--swatch);
   cursor: pointer;
 }
-.ps-color[aria-checked='true'] {
-  box-shadow: 0 0 0 var(--gp-s2) var(--gp-panelSolid), 0 0 0 var(--gp-s4) currentColor;
+.ps-pop__swatch[aria-checked='true'] {
+  box-shadow:
+    0 0 0 var(--gp-s2) var(--gp-panelSolid),
+    0 0 0 var(--gp-s4) var(--swatch);
 }
-.ps-color[aria-checked='true']:focus-visible {
-  box-shadow: 0 0 0 var(--gp-s2) var(--gp-panelSolid), 0 0 0 var(--gp-s4) currentColor, var(--gp-focus);
+.ps-pop__swatch:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 var(--gp-s2) var(--gp-panelSolid),
+    0 0 0 var(--gp-s4) color-mix(in srgb, var(--gp-accent) 55%, transparent);
 }
+
+/* Areas */
 .ps-areas {
   display: flex;
   flex-direction: column;
-  gap: var(--gp-s8);
 }
 .ps-area {
-  display: flex;
-  align-items: center;
-  gap: var(--gp-s10);
-  height: calc(var(--gp-s18) * 2 + var(--gp-s2));
-  padding: 0 var(--gp-s10);
-  margin: 0 calc(var(--gp-s10) * -1);
-  border-radius: var(--gp-r8);
-}
-.ps-area:hover,
-.ps-area.is-over {
-  background: var(--gp-rowSel);
+  position: relative;
 }
 .ps-area.is-over {
   box-shadow: inset 0 var(--gp-s2) 0 var(--gp-accent);
 }
 .ps-area__handle {
-  flex: none;
+  position: absolute;
+  left: calc(var(--gp-s10) * -1);
+  top: 50%;
+  translate: 0 -50%;
   display: grid;
   place-items: center;
   width: var(--gp-s16);
@@ -136,12 +283,14 @@
   background: transparent;
   color: var(--gp-text3);
   cursor: grab;
+  opacity: 0;
+  transition: opacity var(--gp-fast);
 }
-.ps-area__swatch {
-  flex: none;
-  width: var(--gp-s10);
-  height: var(--gp-s10);
-  border-radius: var(--gp-r3);
+/* The handle waits in the panel gutter and shows on hover or keyboard focus. */
+.ps-area:hover .ps-area__handle,
+.ps-area__handle:focus-visible,
+.ps-area.is-over .ps-area__handle {
+  opacity: 1;
 }
 .ps-area__input {
   flex: 1;
@@ -164,24 +313,28 @@
   background: var(--gp-input);
   box-shadow: var(--gp-focus);
 }
-.ps-area__count {
-  flex: none;
-  font-size: var(--gp-fs-meta);
-  color: var(--gp-text3);
-}
-.ps-area__delete {
+.ps-area .ps-area__delete {
   opacity: 0;
 }
-.ps-area:hover .ps-area__delete,
-.ps-area__delete:focus-visible {
+.ps-area:hover .ps-area__delete:not(:disabled),
+.ps-area .ps-area__delete:focus-visible {
   opacity: 1;
+}
+.ps-area:hover .ps-area__delete:disabled {
+  opacity: 0.4;
+}
+/* Milestone rows keep the same trailing slot as an area's delete button, so the counts line up. */
+.ps-item__end {
+  flex: none;
+  width: var(--gp-iconBtn);
 }
 .ps-addrow {
   display: flex;
   align-items: center;
   gap: var(--gp-s10);
-  height: calc(var(--gp-s18) * 2 + var(--gp-s2));
+  height: var(--ps-rowH);
   padding: 0;
+  margin-left: calc(var(--gp-s2) * -1);
   border: 0;
   border-radius: var(--gp-r8);
   background: transparent;
@@ -194,72 +347,6 @@
 }
 .ps-addfield {
   padding: var(--gp-s4) 0;
-}
-.ps-labels {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--gp-s6);
-}
-.ps-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--gp-s4);
-  height: var(--gp-control);
-  padding: 0 var(--gp-s10);
-  border-radius: var(--gp-r7);
-  background: var(--gp-sel);
-}
-.ps-chip__x {
-  display: none;
-  place-items: center;
-  width: var(--gp-s16);
-  height: var(--gp-s16);
-  margin-right: calc(var(--gp-s6) * -1);
-  padding: 0;
-  border: 0;
-  border-radius: var(--gp-r5);
-  background: transparent;
-  color: var(--gp-text2);
-  cursor: pointer;
-}
-.ps-chip:hover .ps-chip__x,
-.ps-chip__x:focus-visible {
-  display: grid;
-}
-.ps-plus {
-  display: grid;
-  place-items: center;
-  width: var(--gp-control);
-  height: var(--gp-control);
-  padding: 0;
-  border: 0;
-  border-radius: var(--gp-r7);
-  background: transparent;
-  box-shadow: var(--gp-fieldRing);
-  color: var(--gp-text2);
-  cursor: pointer;
-}
-.ps-plus:hover {
-  background: var(--gp-sel);
-}
-.ps-addfield--label {
-  padding: 0;
-}
-.ps-danger {
-  height: var(--gp-rowSm);
-  padding: 0 var(--gp-s12);
-  border: 0;
-  border-radius: var(--gp-r8);
-  background: transparent;
-  box-shadow: var(--gp-fieldRing);
-  color: var(--gp-risk);
-  font: inherit;
-  font-weight: var(--gp-fw-medium);
-  cursor: pointer;
-}
-.ps-danger:hover {
-  background: var(--gp-sel);
 }
 .ps-archive-note {
   margin: 0;

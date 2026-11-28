@@ -7,7 +7,7 @@ import { memoryLocation } from 'wouter/memory-location';
 import { describe, expect, it, vi } from 'vitest';
 import { PausedArchived } from '../src/screens/archive/PausedArchived';
 import { ProjectSettings } from '../src/screens/project/ProjectSettings';
-import { NewProject, PALETTE } from '../src/sheets/NewProject';
+import { NewProject, PALETTE, nextColour, repoFields } from '../src/sheets/NewProject';
 import { overview, projectList, templates, tree } from './fixtures/projects';
 import { mockFetch } from './setup';
 
@@ -51,32 +51,72 @@ describe('NewProject', () => {
     expect(history?.at(-1)).toBe('/p/fresh/timeline');
   });
 
-  it('blank posts typed area tokens and the first milestone', async () => {
+  it('blank posts typed area tokens and creates no milestone', async () => {
     const fn = mockFetch(routes());
     mount(<NewProject onClose={() => {}} />);
     const user = userEvent.setup();
     await screen.findByRole('radio', { name: /Launch/ });
+    expect(screen.queryByRole('textbox', { name: 'First milestone' })).toBeNull();
     await user.type(screen.getByRole('textbox', { name: 'Areas' }), 'AI{Enter}QA,');
     await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Fresh');
-    await user.type(screen.getByRole('textbox', { name: 'First milestone' }), 'Kickoff');
     await user.click(screen.getByRole('button', { name: 'Create project' }));
     await waitFor(() => expect(bodyOf(fn, 'POST', '/api/projects')).toBeDefined());
     const b = bodyOf(fn, 'POST', '/api/projects');
     expect(b.areas.map((a: { name: string }) => a.name)).toEqual(['AI', 'QA']);
-    expect(b.firstMilestone).toMatchObject({ name: 'Kickoff' });
+    expect(b.firstMilestone).toBeUndefined();
     expect(b.template).toBeUndefined();
   });
 
-  it('colour defaults to a palette colour not used by existing projects', async () => {
+  it('has no colour picker or vault note and posts no colour', async () => {
     const fn = mockFetch(routes());
     mount(<NewProject onClose={() => {}} />);
     const user = userEvent.setup();
-    const third = await screen.findByRole('radio', { name: PALETTE[2]!.name });
-    await waitFor(() => expect(third).toHaveAttribute('aria-checked', 'true'));
+    await screen.findByRole('radio', { name: /Launch/ });
+    expect(screen.queryByRole('radiogroup', { name: 'Colour' })).toBeNull();
+    expect(screen.queryByText('Vault note')).toBeNull();
     await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Z');
     await user.click(screen.getByRole('button', { name: 'Create project' }));
     await waitFor(() => expect(bodyOf(fn, 'POST', '/api/projects')).toBeDefined());
-    expect(bodyOf(fn, 'POST', '/api/projects').color).toBe(PALETTE[2]!.hex);
+    expect(bodyOf(fn, 'POST', '/api/projects').color).toBeUndefined();
+  });
+
+  it('Repository sends owner/repo as github and anything else as repo', async () => {
+    const fn = mockFetch(routes());
+    mount(<NewProject onClose={() => {}} />);
+    const user = userEvent.setup();
+    await screen.findByRole('radio', { name: /Launch/ });
+    await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Z');
+    await user.type(screen.getByRole('textbox', { name: 'Repository' }), 'acme/site');
+    await user.click(screen.getByRole('button', { name: 'Create project' }));
+    await waitFor(() => expect(bodyOf(fn, 'POST', '/api/projects')).toBeDefined());
+    const b = bodyOf(fn, 'POST', '/api/projects');
+    expect(b.github).toBe('acme/site');
+    expect(b.repo).toBeUndefined();
+  });
+
+  it('Create project is disabled until there is a name', async () => {
+    mockFetch(routes());
+    mount(<NewProject onClose={() => {}} />);
+    const user = userEvent.setup();
+    const create = screen.getByRole('button', { name: 'Create project' });
+    expect(create).toBeDisabled();
+    await user.type(screen.getByRole('textbox', { name: 'Name' }), 'A');
+    expect(create).toBeEnabled();
+  });
+});
+
+describe('NewProject helpers', () => {
+  it('repoFields splits GitHub from other repositories', () => {
+    expect(repoFields('acme/site')).toEqual({ github: 'acme/site', repo: null });
+    expect(repoFields('https://github.com/acme/site')).toEqual({ github: 'https://github.com/acme/site', repo: null });
+    expect(repoFields('https://gitlab.com/acme/site')).toEqual({ github: null, repo: 'https://gitlab.com/acme/site' });
+    expect(repoFields('~/code/site')).toEqual({ github: null, repo: '~/code/site' });
+    expect(repoFields('  ')).toEqual({ github: null, repo: null });
+  });
+
+  it('nextColour picks the first unused palette colour', () => {
+    expect(nextColour([])).toBe(PALETTE[0].hex);
+    expect(nextColour([PALETTE[0].hex.toLowerCase(), null, PALETTE[1].hex])).toBe(PALETTE[2].hex);
   });
 });
 
@@ -92,7 +132,9 @@ describe('NewProject template cards and areas', () => {
     mockFetch(routes());
     mount(<NewProject onClose={() => {}} />);
     const group = await screen.findByRole('radiogroup', { name: 'Start from' });
-    expect(await within(group).findByRole('radio', { name: /Launch/ })).toHaveTextContent('4 milestones · 14 tasks');
+    const launch = await within(group).findByRole('radio', { name: 'Launch' });
+    expect(launch).toHaveAccessibleDescription('4 milestones14 tasks');
+    expect([...launch.querySelectorAll('.np-card__meta > span')].map((n) => n.textContent)).toEqual(['4 milestones', '14 tasks']);
     expect(within(group).getByRole('radio', { name: /Blank/ })).toHaveTextContent('Empty project');
     expect(within(group).getByRole('radio', { name: /Blank/ })).toHaveAttribute('aria-checked', 'true');
   });
@@ -104,7 +146,14 @@ describe('NewProject template cards and areas', () => {
     await user.click(await screen.findByRole('radio', { name: /Report/ }));
     expect(screen.getByText('Research', { selector: '.gp-token__name' })).toBeInTheDocument();
     expect(screen.getByText('Design', { selector: '.gp-token__name' })).toBeInTheDocument();
-    expect(screen.getByText(/^Outline [A-Z][a-z]{2} \d+ · Draft .* · Final /)).toBeInTheDocument();
+    const preview = screen.getByRole('list', { name: 'Milestones' });
+    expect([...preview.querySelectorAll('li')].map((li) => li.textContent)).toEqual([
+      expect.stringMatching(/^Outline[A-Z][a-z]{2} \d+/),
+      expect.stringMatching(/^Draft/),
+      expect.stringMatching(/^Final/),
+    ]);
+    // Milestone diamonds use the palette in order, as the engine assigns them.
+    expect((preview.querySelector('.np-preview__diamond') as HTMLElement).style.background).not.toBe('');
     await user.type(screen.getByRole('textbox', { name: 'Areas' }), 'Review{Enter}');
     await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Q1');
     await user.click(screen.getByRole('button', { name: 'Create project' }));
@@ -176,6 +225,21 @@ describe('ProjectSettings', () => {
     mount(<ProjectSettings slug="alpha" />);
     expect(await screen.findByRole('radiogroup', { name: 'Done by' })).toBeInTheDocument();
     expect(screen.queryByText('Default executor')).toBeNull();
+  });
+
+  it('area edits start from the server list, not the cached one', async () => {
+    let calls = 0;
+    const fresh = { ...tree, project: { ...tree.project, areas: [...tree.project.areas, { id: 'a3', projectId: 'p1', name: 'Ops', color: null, ord: 2, tasks: 1 }] } };
+    // First read is the page load; every later read sees an area an agent added meanwhile.
+    const fn = mockFetch({ '/api/projects/alpha': () => (calls++ === 0 ? tree : fresh), 'PATCH /api/projects/alpha': tree.project });
+    mount(<ProjectSettings slug="alpha" />);
+    const user = userEvent.setup();
+    const input = await screen.findByRole('textbox', { name: 'Area Backend' });
+    await user.clear(input);
+    await user.type(input, 'API');
+    await user.tab();
+    await waitFor(() => expect(bodyOf(fn, 'PATCH', '/api/projects/alpha')).toBeDefined());
+    expect(bodyOf(fn, 'PATCH', '/api/projects/alpha').areas.map((a: { name: string }) => a.name)).toEqual(['Frontend', 'API', 'Ops']);
   });
 
   it('archive asks first, then posts', async () => {

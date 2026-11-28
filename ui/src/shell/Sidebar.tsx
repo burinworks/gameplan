@@ -8,7 +8,6 @@ import { ArchiveProjectSheet } from '../screens/project/ArchiveProjectSheet';
 import { Button } from '../ui/Button';
 import { Icon, type IconName } from '../ui/Icon';
 import { Menu, type MenuItem } from '../ui/Menu';
-import { Swatch } from '../ui/Swatch';
 import './sidebar.css';
 
 function NavLink({ to, icon, label, count, active, small }: { to: string; icon: IconName; label: string; count?: number; active: boolean; small?: boolean }) {
@@ -60,8 +59,7 @@ export function Sidebar({ onSearch, onNewProject }: { onSearch: () => void; onNe
           return (
             <div key={p.slug}>
               <div className="gp-projrow">
-                <Link href={paths.project(p.slug)} className={`gp-nav${isCurrent ? ' is-current' : ''}`} aria-current={isCurrent ? 'page' : undefined}>
-                  <Swatch color={p.color} />
+                <Link href={paths.project(p.slug)} className={`gp-nav gp-nav--project${isCurrent ? ' is-current' : ''}`} aria-current={isCurrent ? 'page' : undefined}>
                   <span className="gp-nav__label" dir="auto" title={p.name}>
                     {p.name}
                   </span>
@@ -75,7 +73,7 @@ export function Sidebar({ onSearch, onNewProject }: { onSearch: () => void; onNe
                     <li
                       key={m.id}
                       className={`gp-milestone${m.status === 'done' ? ' is-done' : ''}`}
-                      style={{ ['--ms' as string]: p.color ?? 'var(--gp-text3)' }}
+                      style={{ ['--ms' as string]: m.color ?? 'var(--gp-text3)' }}
                     >
                       <span className="gp-milestone__mark" aria-hidden="true" />
                       <span className="gp-milestone__name" dir="auto" title={m.name}>
