@@ -3,7 +3,7 @@ import type { publicSettings } from '../../../src/domain/settings';
 import type { listTemplates } from '../../../src/domain/templates';
 
 export type { Project, Milestone, Task, Todo, Attachment, EventRow, TaskStatus, Executor, Priority, InboxItem } from '../../../src/domain/types';
-export type { ProjectTree, TreeTask, TreeMilestone, TreeTodo, LinkRef, UpdateRow } from '../../../src/domain/queries';
+export type { ProjectTree, TreeTask, TreeMilestone, TreeTodo, TreeLogEntry, LinkRef, UpdateRow } from '../../../src/domain/queries';
 export type { SearchHit } from '../../../src/domain/search';
 export type { Health, TodoState } from '../../../src/domain/derive';
 
@@ -15,3 +15,12 @@ export type MilestoneDetail = ReturnType<typeof milestoneDetail>;
 export type Overview = ReturnType<typeof overview>;
 export type PublicSettings = ReturnType<typeof publicSettings>;
 export type TemplateInfo = ReturnType<typeof listTemplates>[number];
+
+/** One execution-log entry as the HTTP routes return it (newest first in lists). */
+export interface LogRow {
+  id: string;
+  text: string;
+  by: string;
+  at: string;
+  editedAt: string | null;
+}

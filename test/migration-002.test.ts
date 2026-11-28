@@ -33,7 +33,7 @@ describe('migration 002 on a populated v1 database', () => {
     const path = join(mkdtempSync(join(tmpdir(), 'gp-m2-')), 'g.db');
     const before = v1Db(path);
     const db = openDb(path);
-    expect((db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(2);
+    expect((db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(3);
     for (const t of SNAP) {
       const rows = db.prepare(`SELECT * FROM ${t} ORDER BY id`).all() as Record<string, unknown>[];
       if (t === 'tasks') {
@@ -44,6 +44,7 @@ describe('migration 002 on a populated v1 database', () => {
           delete r.resume_by;
         }
       }
+      if (t === 'milestones') for (const r of rows) delete r.color; // added by migration 003
       expect(rows).toEqual(before[t]);
     }
     expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);

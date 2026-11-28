@@ -36,6 +36,9 @@ const task = async (engine: Seeded, id: string) => (await (await fetch(`${engine
 /** Streamable HTTP MCP call as a named client: initialize, then tools/call. */
 async function mcpCall(baseURL: string, name: string, args: Record<string, unknown>): Promise<void> {
   const headers: Record<string, string> = { 'content-type': 'application/json', accept: 'application/json, text/event-stream' };
+  // The engine creates the MCP token at startup; the connect route hands it out.
+  const { token } = (await (await fetch(`${baseURL}/api/mcp/connect`)).json()) as { token: string };
+  headers.authorization = `Bearer ${token}`;
   const post = (body: unknown, extra: Record<string, string> = {}) => fetch(`${baseURL}/mcp`, { method: 'POST', headers: { ...headers, ...extra }, body: JSON.stringify(body) });
   const init = await post({
     jsonrpc: '2.0',

@@ -8,10 +8,10 @@ Gameplan holds the user's plan of record: **Projects › Milestones › Tasks �
 2. **Tick to-dos as you go.** Call `complete_todo` right after finishing each to-do, not in a batch at the end.
 3. **Finishing sends work to review.** When you tick the last to-do or set `status: done`, the task goes to `review` and waits for the user. Never tell the user a task is done; tell them it is ready for their review. There is no tool for you to accept a review.
 4. **Attach what you produce.** Every commit, PR or ticket for a task: `attach` with the URL (GitHub commits/PRs/issues, Jira and Linear tickets are parsed). Attach the same URL again with `state: merged` when it merges.
-5. **Leave a resume note.** End every work session on a task with `set_resume_note`: one line on where you stopped and what comes next. The user sees it under "Pick up where you left off".
+5. **Add to the execution log.** End every work session on a task with `set_resume_note`: it appends one line to the task's execution log, saying where you stopped and what comes next. The newest entry shows under "Pick up where you left off". You can only change your own entries; an empty note is ignored.
 6. **Capture loose ends.** Ideas, side issues and follow-ups you notice go to the inbox with `capture`, not into new tasks. The user triages them.
 7. **Move dates honestly.** When work slips, `reschedule_task` with a `reason` the user will read. Use `cascade: true` to push dependents by the same number of days. `update_task` cannot change dates.
-8. **Read cheaply.** Start with `get_today` (plan, pick-up, today, needs review), `get_at_risk`, or `get_project` with `depth: tasks`. Use `get_task` only when you need one task's description, to-dos, resume note and history.
+8. **Read cheaply.** Start with `get_today` (plan, pick-up, today, needs review), `get_at_risk`, or `get_project` with `depth: tasks`. Use `get_task` only when you need one task's description, to-dos, execution log and history.
 9. **Never archive unless the user asks.** It is off for agents by default (`agents_can_archive`).
 
 ## Useful facts

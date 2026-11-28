@@ -25,17 +25,17 @@ describe('resume notes', () => {
     store.setResumeNote(YOU, t.id, 'x'.repeat(200));
   });
 
-  it("'' clears it", () => {
+  it("'' is ignored (it no longer clears)", () => {
     const { store, t } = base();
     store.setResumeNote(YOU, t.id, 'something');
-    expect(store.setResumeNote(YOU, t.id, '')).toMatchObject({ resumeNote: null, resumeAt: null, resumeBy: null });
+    expect(store.setResumeNote(YOU, t.id, '')).toMatchObject({ resumeNote: 'something' });
   });
 
   it('revert restores the previous note', () => {
     const { store, t, db } = base();
     store.setResumeNote({ actor: 'ai:codex' }, t.id, 'first');
     store.setResumeNote(YOU, t.id, 'second');
-    const ev = db.prepare("SELECT id FROM events WHERE kind = 'resume_noted' ORDER BY rowid DESC LIMIT 1").get() as { id: string };
+    const ev = db.prepare("SELECT id FROM events WHERE kind = 'log_added' ORDER BY rowid DESC LIMIT 1").get() as { id: string };
     revert(store, YOU, ev.id);
     expect(store.task(t.id)).toMatchObject({ resumeNote: 'first', resumeBy: 'ai:codex' });
   });

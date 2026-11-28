@@ -4,14 +4,14 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { openDb } from '../src/db/open.js';
 
-const TABLES = ['agent_clients', 'areas', 'attachments', 'day_plan_items', 'dependencies', 'events', 'inbox_items', 'milestones', 'projects', 'settings', 'tasks', 'todos'];
+const TABLES = ['agent_clients', 'areas', 'attachments', 'day_plan_items', 'dependencies', 'events', 'inbox_items', 'milestones', 'projects', 'settings', 'task_log', 'tasks', 'todos'];
 
 describe('openDb', () => {
-  it('creates all tables at user_version 2', () => {
+  it('creates all tables at user_version 3', () => {
     const db = openDb(':memory:');
     const rows = db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all() as { name: string }[];
     expect(rows.map((r) => r.name)).toEqual(TABLES);
-    expect((db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(2);
+    expect((db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(3);
   });
 
   it('does not re-run applied migrations on reopen', () => {

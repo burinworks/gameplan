@@ -29,7 +29,7 @@ describe('http api', () => {
     const s = setup();
     const app = createApp({ store: s.store, db: s.db, clock: s.clock, dbPath: '/data/gp/gameplan.db', version: '9.9.9' });
     const ok = await app.request('/api/info', { headers: { host: '127.0.0.1:4747' } });
-    expect(await ok.json()).toEqual({ dbPath: '/data/gp/gameplan.db', version: '9.9.9' });
+    expect(await ok.json()).toEqual({ dbPath: '/data/gp/gameplan.db', version: '9.9.9', port: 4747, configuredPort: 4747 });
     expect((await app.request('/api/info', { headers: { host: 'evil.example' } })).status).toBe(403);
   });
 

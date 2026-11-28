@@ -108,8 +108,9 @@ export function statusLabel(s: Status): string {
 const cap = (s: string): string => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 export function errorLine(e: { code: string; message: string }): string {
+  // `conflict` is only for stale state (undo after a change, an inbox item already handled); every other refusal is `invalid` and says why.
   if (e.code === 'conflict') return 'Changed since — reload to see the latest';
-  if (e.code === 'invalid' && e.message.includes('cycle')) return 'Would create a loop';
+  if (e.message.includes('cycle')) return 'Would create a loop';
   if (e.code === 'network') return "Gameplan engine isn't running";
   if (e.code === 'forbidden') return cap(e.message);
   return cap(e.message.replace(/\.+$/, ''));

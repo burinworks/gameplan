@@ -16,7 +16,9 @@ export const DEFAULTS = {
   agents_need_review: true,
   agents_can_archive: false,
   agents_can_create_projects: true,
-  /** When set, /mcp requires `Authorization: Bearer <token>`. Never returned over HTTP. */
+  /** Port the engine listens on (restart to apply). GAMEPLAN_PORT overrides it. */
+  port: 4747,
+  /** /mcp requires `Authorization: Bearer <token>`; created automatically at startup. Never returned over HTTP. Formerly optional: when set, /mcp requires `Authorization: Bearer <token>`. Never returned over HTTP. */
   mcp_token: null as string | null,
 };
 
@@ -58,6 +60,8 @@ export function validateSettingsPatch(patch: Record<string, unknown>): SettingsP
     if (allowed && !allowed.includes(value as string)) throw new GameplanError('invalid', `setting "${key}" must be one of ${allowed.join(', ')}`);
     if (key === 'time_zone' && !isValidTimeZone(value)) throw new GameplanError('invalid', `"${String(value)}" is not a valid IANA time zone`);
     if (key === 'accent' && !/^#[0-9a-fA-F]{6}$/.test(value as string)) throw new GameplanError('invalid', 'setting "accent" must be a #RRGGBB colour');
+    if (key === 'port' && (!Number.isInteger(value) || (value as number) < 1024 || (value as number) > 65535))
+      throw new GameplanError('invalid', 'setting "port" must be an integer 1024..65535');
     if (key === 'rescheduled_days' && (!Number.isInteger(value) || (value as number) < 1 || (value as number) > 365))
       throw new GameplanError('invalid', 'setting "rescheduled_days" must be an integer 1..365');
   }

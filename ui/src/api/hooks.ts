@@ -7,6 +7,7 @@ import type {
   Executor,
   Home,
   InboxItem,
+  LogRow,
   Milestone,
   MilestoneDetail,
   Overview,
@@ -97,6 +98,10 @@ export const useProject = (slug: string | undefined) =>
 export const useTask = (id: string | undefined) =>
   useQuery({ queryKey: ['task', id], queryFn: () => api<TaskDetail>('GET', `/api/tasks/${encodeURIComponent(id!)}`), enabled: !!id });
 
+/** Live entries of a task's execution log, newest first. (`useTask(id).data.log` carries the same list.) */
+export const useTaskLog = (id: string | undefined) =>
+  useQuery({ queryKey: ['task', id, 'log'], queryFn: () => api<LogRow[]>('GET', `/api/tasks/${encodeURIComponent(id!)}/log`), enabled: !!id });
+
 export const useMilestone = (id: string | undefined) =>
   useQuery({ queryKey: ['milestone', id], queryFn: () => api<MilestoneDetail>('GET', `/api/milestones/${encodeURIComponent(id!)}`), enabled: !!id });
 
@@ -131,7 +136,19 @@ export const useSearch = (q: string) =>
 
 export const useSettings = () => useQuery({ queryKey: ['settings'], queryFn: () => api<PublicSettings>('GET', '/api/settings') });
 
-export const useInfo = () => useQuery({ queryKey: ['info'], queryFn: () => api<{ dbPath: string | null; version: string | null }>('GET', '/api/info'), staleTime: Infinity });
+/** `port` is the one actually listening; `configuredPort` is the saved setting (applies after a restart). */
+export const useInfo = () =>
+  useQuery({ queryKey: ['info'], queryFn: () => api<{ dbPath: string | null; version: string | null; port: number; configuredPort: number }>('GET', '/api/info') });
+
+export interface McpConnect {
+  endpoint: string;
+  token: string;
+  snippets: { claudeCode: string; codex: string; cursor: string; geminiCli: string; claudeDesktop: string; chatgpt: string; other: string };
+}
+/** Endpoint, token and ready-to-copy connection snippets (token included). Creates the token if missing. */
+export const useMcpConnect = () => useQuery({ queryKey: ['mcpConnect'], queryFn: () => api<McpConnect>('GET', '/api/mcp/connect') });
+/** New token; the result is the fresh connect info. Connected agents must re-copy the command. */
+export const useRotateToken = () => useMutation({ mutationFn: () => api<McpConnect>('POST', '/api/mcp/token/rotate'), ...mut });
 
 export const useInbox = () =>
   useQuery({ queryKey: ['inbox'], queryFn: () => api<{ count: number; items: { id: string; text: string; by: string; at: string }[] }>('GET', '/api/inbox') });
@@ -195,6 +212,8 @@ export interface MilestoneBody {
   due?: string | null;
   status?: 'planned' | 'active' | 'done';
   description?: string | null;
+  /** `#RRGGBB`; omitted on create → the engine picks the next unused palette colour. */
+  color?: string;
 }
 export const useCreateMilestone = () =>
   useMutation({ mutationFn: (v: { slug: string; body: MilestoneBody }) => api<Milestone>('POST', `/api/projects/${encodeURIComponent(v.slug)}/milestones`, v.body), ...mut });
@@ -243,6 +262,12 @@ export const useReview = () =>
 
 export const useSetResume = () =>
   useMutation({ mutationFn: (v: { id: string; note: string | null }) => api<Task>('PUT', `/api/tasks/${encodeURIComponent(v.id)}/resume`, { note: v.note }), ...mut });
+
+export const useAddLog = () =>
+  useMutation({ mutationFn: (v: { taskId: string; text: string }) => api<LogRow>('POST', `/api/tasks/${encodeURIComponent(v.taskId)}/log`, { text: v.text }), ...mut });
+export const useEditLog = () =>
+  useMutation({ mutationFn: (v: { id: string; text: string }) => api<LogRow>('PATCH', `/api/log/${encodeURIComponent(v.id)}`, { text: v.text }), ...mut });
+export const useDeleteLog = () => useMutation({ mutationFn: (id: string) => api<{ ok: true }>('DELETE', `/api/log/${encodeURIComponent(id)}`), ...mut });
 
 export const usePlanDay = () =>
   useMutation({

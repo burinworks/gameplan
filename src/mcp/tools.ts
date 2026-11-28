@@ -25,7 +25,7 @@ Every change you make is logged with your name and shown to the user.
 - Call complete_todo right after you finish each to-do.
 - Finishing a task sends it to the user's review (status review). Never tell the user it is done; say it is waiting for their review.
 - attach every commit / PR / ticket you make or use for a task.
-- End every work session on a task with set_resume_note: one line on where you stopped and what comes next.
+- End every work session on a task with set_resume_note: it appends one line to the task's execution log (where you stopped, what comes next).
 - Put loose ideas and side issues in the inbox with capture instead of creating tasks.
 - When dates slip, reschedule_task with a reason (cascade: true to push dependents).
 - Read cheaply: get_today, get_at_risk, get_project depth=tasks; get_task for one task's details.
@@ -368,7 +368,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   // ----- work: resume notes, day plan, inbox, templates -----
   tool(
     'set_resume_note',
-    'Call at the end of every work session on a task: one line on where you stopped and what comes next. Empty note clears it.',
+    "Call at the end of every work session on a task: appends one line to the task's execution log, saying where you stopped and what comes next. An empty note is ignored. The newest entry shows under Pick up where you left off.",
     { task_id: z.string(), note: z.string().max(200) },
     (a) => {
       const t = store.setResumeNote(ctx(), a.task_id, a.note);

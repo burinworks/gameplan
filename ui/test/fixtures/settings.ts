@@ -14,6 +14,7 @@ export const settingsFixture: PublicSettings = {
   agents_need_review: true,
   agents_can_archive: false,
   agents_can_create_projects: true,
+  port: 4747,
   mcp_token_set: false,
 };
 

@@ -48,6 +48,8 @@ describe('format', () => {
   });
   it('errors', () => {
     expect(errorLine({ code: 'conflict', message: 'changed since' })).toBe('Changed since — reload to see the latest');
+    expect(errorLine({ code: 'invalid', message: 'area "AI" is used by 2 task(s): "A", "B" — move them first' })).toBe('Area "AI" is used by 2 task(s): "A", "B" — move them first');
+    expect(errorLine({ code: 'invalid', message: 'dependency cycle: A → B → A' })).toBe('Would create a loop');
     expect(errorLine({ code: 'invalid', message: 'would create a cycle: a → b → a' })).toBe('Would create a loop');
     expect(errorLine({ code: 'network', message: '' })).toBe("Gameplan engine isn't running");
     expect(errorLine({ code: 'forbidden', message: 'agents cannot do that.' })).toBe('Agents cannot do that.');

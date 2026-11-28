@@ -5,6 +5,7 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono, type Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { addDays, isDate, type Clock } from '../clock.js';
+import { connectInfo, ensureMcpToken, newToken } from '../mcp/connect.js';
 import { exportJson, exportMarkdown } from '../export.js';
 import { getDayPlan, home, inbox, listProjects, milestoneDetail, overview, projectTree, taskDetail, timeline, updates } from '../domain/queries.js';
 import { rescheduleTask } from '../domain/reschedule.js';
@@ -13,7 +14,7 @@ import { search } from '../domain/search.js';
 import { getSettings, publicSettings } from '../domain/settings.js';
 import type { Store, TriageTarget } from '../domain/store.js';
 import { listTemplates } from '../domain/templates.js';
-import { GameplanError, PROJECT_STATUS, type Ctx, type EventRow, type ProjectStatus } from '../domain/types.js';
+import { GameplanError, PROJECT_STATUS, type Ctx, type EventRow, type LogEntry, type ProjectStatus } from '../domain/types.js';
 
 export interface Backups {
   last(): { file: string; at: string } | null;
@@ -32,6 +33,8 @@ export interface AppDeps {
   /** Absolute path of the database file the engine runs on; shown in Settings. */
   dbPath?: string;
   version?: string;
+  /** Port actually listening (main.ts); defaults to the `port` setting. */
+  port?: number;
 }
 
 const YOU: Ctx = { actor: 'you' };
@@ -54,6 +57,8 @@ function originAllowed(origin: string): boolean {
   const m = /^https?:\/\/([^/:]+|\[::1\])(:\d+)?$/i.exec(origin);
   return !!m && LOCAL_HOSTS.has(m[1]!.toLowerCase());
 }
+
+const logRow = (e: LogEntry) => ({ id: e.id, text: e.text, by: e.actor, at: e.createdAt, editedAt: e.editedAt });
 
 export function createApp(deps: AppDeps): Hono {
   const { store, db } = deps;
@@ -96,6 +101,11 @@ export function createApp(deps: AppDeps): Hono {
   app.get('/api/projects/:slug', (c) => c.json(projectTree(db, c.req.param('slug'), today())));
   app.get('/api/milestones/:id', (c) => c.json(milestoneDetail(db, c.req.param('id'), today())));
   app.get('/api/tasks/:id', (c) => c.json(taskDetail(db, c.req.param('id'), today())));
+  app.get('/api/tasks/:id/log', (c) => {
+    const id = c.req.param('id');
+    store.task(id);
+    return c.json(store.logOf(id).map(logRow));
+  });
   app.get('/api/overview', (c) => c.json(overview(db, today())));
   app.get('/api/updates', (c) => {
     const actor = c.req.query('actor') ?? 'all';
@@ -112,7 +122,15 @@ export function createApp(deps: AppDeps): Hono {
     );
   });
   app.get('/api/search', (c) => c.json(search(db, c.req.query('q') ?? '', Number(c.req.query('limit') ?? 20))));
-  app.get('/api/info', (c) => c.json({ dbPath: deps.dbPath ?? null, version: deps.version ?? null }));
+  app.get('/api/info', (c) => {
+    const configuredPort = getSettings(db).port;
+    return c.json({ dbPath: deps.dbPath ?? null, version: deps.version ?? null, port: deps.port ?? configuredPort, configuredPort });
+  });
+  app.get('/api/mcp/connect', (c) => c.json(connectInfo(`http://127.0.0.1:${deps.port ?? getSettings(db).port}/mcp`, ensureMcpToken(store))));
+  app.post('/api/mcp/token/rotate', (c) => {
+    store.setSettings(YOU, { mcp_token: newToken() });
+    return c.json(connectInfo(`http://127.0.0.1:${deps.port ?? getSettings(db).port}/mcp`, ensureMcpToken(store)));
+  });
   app.get('/api/settings', (c) => c.json(publicSettings(getSettings(db))));
   app.get('/api/day-plan/:date', (c) => {
     const date = c.req.param('date');
@@ -149,6 +167,7 @@ export function createApp(deps: AppDeps): Hono {
         tasks: t.tasks!.filter((x) => ts.has((x as { id: string }).id)),
         todos: t.todos!.filter((x) => ts.has((x as { task_id: string }).task_id)),
         dependencies: t.dependencies!.filter((x) => ts.has((x as { from_task_id: string }).from_task_id)),
+        task_log: t.task_log!.filter((x) => ts.has((x as { task_id: string }).task_id)),
         attachments: t.attachments!.filter((x) => ts.has((x as { task_id: string }).task_id)),
         events: t.events!.filter((x) => (x as { project_id: string | null }).project_id === p.id),
       };
@@ -172,6 +191,12 @@ export function createApp(deps: AppDeps): Hono {
   app.put('/api/tasks/:id/resume', async (c) => {
     const b = await body<{ note?: string | null }>(c);
     return c.json(store.setResumeNote(YOU, c.req.param('id'), b.note ?? null));
+  });
+  app.post('/api/tasks/:id/log', async (c) => c.json(logRow(store.addLogEntry(YOU, c.req.param('id'), (await body<{ text?: string }>(c)).text as string)), 201));
+  app.patch('/api/log/:id', async (c) => c.json(logRow(store.editLogEntry(YOU, c.req.param('id'), (await body<{ text?: string }>(c)).text as string))));
+  app.delete('/api/log/:id', (c) => {
+    store.deleteLogEntry(YOU, c.req.param('id'));
+    return c.json({ ok: true });
   });
   app.put('/api/day-plan/:date', async (c) => {
     const b = await body<unknown>(c);
@@ -205,12 +230,17 @@ export function createApp(deps: AppDeps): Hono {
     store.detach(YOU, c.req.param('id'));
     return c.json({ ok: true });
   });
-  app.post('/api/dependencies', async (c) => {
-    const b = await body<{ fromTaskId: string; taskId?: string; milestoneId?: string }>(c);
+  const addDep = (from: string, b: { taskId?: string; milestoneId?: string }) => {
     const target = b.taskId ? { taskId: b.taskId } : b.milestoneId ? { milestoneId: b.milestoneId } : null;
     if (!target) throw new GameplanError('invalid', 'give taskId or milestoneId');
-    return c.json(store.addDependency(YOU, b.fromTaskId, target), 201);
+    return store.addDependency(YOU, from, target);
+  };
+  app.post('/api/dependencies', async (c) => {
+    const b = await body<{ fromTaskId: string; taskId?: string; milestoneId?: string }>(c);
+    return c.json(addDep(b.fromTaskId, b), 201);
   });
+  /** "This task depends on …": a task and/or a milestone's completion. Same result as POST /api/dependencies. */
+  app.post('/api/tasks/:id/dependencies', async (c) => c.json(addDep(c.req.param('id'), await body(c)), 201));
   app.delete('/api/dependencies/:id', (c) => {
     store.removeDependency(YOU, c.req.param('id'));
     return c.json({ ok: true });

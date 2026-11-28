@@ -95,6 +95,12 @@ export function describe(e: UpdateRow, now: string): Described {
       return { verb: 'sent back', target: label, note: e.reason ?? undefined, conflicts: none };
     case 'resume_noted':
       return { verb: 'left off at', target: label, note: str(after.note) ?? undefined, conflicts: none };
+    case 'log_added':
+      return { verb: 'logged on', target: label, note: str(after.text) ?? undefined, conflicts: none };
+    case 'log_edited':
+      return { verb: 'edited a log entry on', target: label, note: str(after.text) ?? undefined, conflicts: none };
+    case 'log_deleted':
+      return { verb: 'deleted a log entry on', target: label, conflicts: none };
     case 'captured':
       return { verb: 'captured', target: `"${str(after.text) ?? label}"`, conflicts: none };
     case 'triaged':
