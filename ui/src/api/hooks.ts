@@ -131,6 +131,8 @@ export const useSearch = (q: string) =>
 
 export const useSettings = () => useQuery({ queryKey: ['settings'], queryFn: () => api<PublicSettings>('GET', '/api/settings') });
 
+export const useInfo = () => useQuery({ queryKey: ['info'], queryFn: () => api<{ dbPath: string | null; version: string | null }>('GET', '/api/info'), staleTime: Infinity });
+
 export const useInbox = () =>
   useQuery({ queryKey: ['inbox'], queryFn: () => api<{ count: number; items: { id: string; text: string; by: string; at: string }[] }>('GET', '/api/inbox') });
 

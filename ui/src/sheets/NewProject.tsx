@@ -169,7 +169,7 @@ export function NewProject({ onClose }: { onClose(): void }) {
           <ColorPicker value={color} onChange={setChosen} />
 
           <span className="np-label np-label--top">Areas</span>
-          <TokenField label="Areas" tokens={areas} onChange={changeAreas} placeholder="Add an area…" />
+          <TokenField label="Areas" tokens={areas} onChange={changeAreas} placeholder="Add an area…" removable={(a) => !tplAreas.some((t) => same(t, a))} />
 
           {tpl ? (
             <>

@@ -20,9 +20,11 @@ export interface TokenFieldProps {
   placeholder?: string;
   colorFor?: (token: string, index: number) => string;
   autoFocus?: boolean;
+  /** Tokens for which this returns false render without the × and can't be removed. */
+  removable?: (token: string) => boolean;
 }
 
-export function TokenField({ tokens, onChange, label, placeholder, colorFor, autoFocus }: TokenFieldProps) {
+export function TokenField({ tokens, onChange, label, placeholder, colorFor, autoFocus, removable }: TokenFieldProps) {
   const [text, setText] = useState('');
   const colour = (t: string, i: number) => colorFor?.(t, i) ?? `var(--gp-p${(i % PALETTE_SIZE) + 1})`;
 
@@ -45,13 +47,15 @@ export function TokenField({ tokens, onChange, label, placeholder, colorFor, aut
   return (
     <div className="gp-tokens">
       {tokens.map((t, i) => (
-        <span key={t} className="gp-token" style={{ ['--token' as string]: colour(t, i) }}>
+        <span key={t} className="gp-token" aria-disabled={removable && !removable(t) ? true : undefined} style={{ ['--token' as string]: colour(t, i) }}>
           <span className="gp-token__name" dir="auto">
             {t}
           </span>
-          <button type="button" className="gp-token__x" aria-label={`Remove ${t}`} onClick={() => onChange(tokens.filter((x) => x !== t))}>
-            ×
-          </button>
+          {removable && !removable(t) ? null : (
+            <button type="button" className="gp-token__x" aria-label={`Remove ${t}`} onClick={() => onChange(tokens.filter((x) => x !== t))}>
+              ×
+            </button>
+          )}
         </span>
       ))}
       <input

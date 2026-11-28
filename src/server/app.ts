@@ -29,6 +29,9 @@ export interface AppDeps {
   extend?: (app: Hono) => void;
   /** Directory holding the built UI (index.html + assets). Served for non-API GETs when set. */
   uiDir?: string;
+  /** Absolute path of the database file the engine runs on; shown in Settings. */
+  dbPath?: string;
+  version?: string;
 }
 
 const YOU: Ctx = { actor: 'you' };
@@ -109,6 +112,7 @@ export function createApp(deps: AppDeps): Hono {
     );
   });
   app.get('/api/search', (c) => c.json(search(db, c.req.query('q') ?? '', Number(c.req.query('limit') ?? 20))));
+  app.get('/api/info', (c) => c.json({ dbPath: deps.dbPath ?? null, version: deps.version ?? null }));
   app.get('/api/settings', (c) => c.json(publicSettings(getSettings(db))));
   app.get('/api/day-plan/:date', (c) => {
     const date = c.req.param('date');

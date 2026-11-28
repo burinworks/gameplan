@@ -141,7 +141,7 @@ export function Home() {
             {h.plan.length === 0 ? (
               <EmptyState
                 title="Nothing planned for today"
-                action={{ label: 'Plan my day', onClick: () => setPlanning(true) }}
+                action={rows.length > 0 ? { label: 'Plan my day', onClick: () => setPlanning(true) } : undefined}
               />
             ) : (
               h.plan.map((p) => <PlanRow key={p.task.id} p={p} onOpen={() => open(p.task.project, p.task.id)} />)

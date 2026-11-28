@@ -108,8 +108,18 @@ describe('Home empty states', () => {
     expect(screen.queryByText('No projects yet')).toBeNull();
   });
 
-  it('an empty plan offers Plan my day; an empty week says so', async () => {
+  it('with no projects the only primary is Create your first project; Plan my day is hidden', async () => {
     mockFetch(none());
+    wrap(<Home />);
+    const plan = await screen.findByRole('region', { name: 'My plan' });
+    expect(within(plan).getByText('Nothing planned for today')).toBeInTheDocument();
+    await screen.findByText('No projects yet');
+    expect(screen.queryByRole('button', { name: 'Plan my day' })).toBeNull();
+    expect(screen.getAllByRole('button', { name: /Create your first project/ })).toHaveLength(1);
+  });
+
+  it('an empty plan offers Plan my day; an empty week says so', async () => {
+    mockFetch({ ...none(), '/api/timeline': timelineFixture });
     wrap(<Home />);
     const plan = await screen.findByRole('region', { name: 'My plan' });
     expect(within(plan).getByText('Nothing planned for today')).toBeInTheDocument();

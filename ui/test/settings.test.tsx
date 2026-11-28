@@ -25,6 +25,7 @@ function setup(refuse = false) {
       if (mcp_token !== undefined) state.mcp_token_set = mcp_token !== null;
       return state;
     },
+    '/api/info': { dbPath: '/home/sam/.local/share/Gameplan/gameplan.db', version: '1.0.0' },
     '/api/agents': () => agentsFixture(new Date()),
     '/api/backup': { last: { file: 'gameplan-2026-11-27.json', at: new Date(Date.now() - 3 * 3_600_000).toISOString() } },
     'POST /api/backup': { last: { file: 'gameplan-2026-11-27.json', at: new Date().toISOString() } },
@@ -46,6 +47,11 @@ const patches = (f: ReturnType<typeof mockFetch>) =>
   f.mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === 'PATCH').map(([, init]) => JSON.parse((init as RequestInit).body as string) as Record<string, unknown>);
 
 describe('AppSettings', () => {
+  it('shows the engine database folder with the home directory as ~', async () => {
+    setup();
+    expect(await screen.findByText('~/.local/share/Gameplan')).toBeInTheDocument();
+  });
+
   it('switches appearance to dark and applies the theme', async () => {
     const f = setup();
     expect(await screen.findByRole('heading', { name: 'Settings' })).toBeInTheDocument();

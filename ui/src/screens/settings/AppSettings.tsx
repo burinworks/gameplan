@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { ApiError } from '../../api/client';
-import { useAgents, useBackup, useBackupNow, usePatchSettings, useSettings } from '../../api/hooks';
+import { useAgents, useBackup, useBackupNow, useInfo, usePatchSettings, useSettings } from '../../api/hooks';
 import type { PublicSettings } from '../../api/types';
 import { errorLine, fmtAgo } from '../../lib/format';
 import { applyTheme } from '../../theme';
@@ -18,7 +18,12 @@ const ACCENTS = [
   { name: 'Teal', hex: '#3FA796' },
   { name: 'Orchid', hex: '#B66AD0' },
 ];
-const DB_PATH = '~/Library/Application Support/Gameplan';
+
+/** Folder holding the database file, with the user's home directory shown as ~. */
+export function dbFolder(dbPath: string): string {
+  const dir = dbPath.replace(/[\\/][^\\/]*$/, '') || dbPath;
+  return dir.replace(/^(\/Users\/[^/]+|\/home\/[^/]+|[A-Za-z]:\\Users\\[^\\]+)(?=[\\/]|$)/, '~');
+}
 
 type Client = 'claude-code' | 'codex' | 'cursor' | 'gemini' | 'desktop' | 'chatgpt' | 'other';
 
@@ -125,6 +130,7 @@ export function AppSettings() {
   const agents = useAgents();
   const backup = useBackup();
   const backupNow = useBackupNow();
+  const info = useInfo();
   const [client, setClient] = useState<Client>('claude-code');
   const [shownToken, setShownToken] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -340,9 +346,11 @@ export function AppSettings() {
 
           <SetPanel title="Data">
             <div className="gp-set__grid">
-              <SettingRow label="Database">
-                <code className="gp-set__path">{DB_PATH}</code>
-              </SettingRow>
+              {info.data?.dbPath && (
+                <SettingRow label="Database">
+                  <code className="gp-set__path">{dbFolder(info.data.dbPath)}</code>
+                </SettingRow>
+              )}
               <SettingRow label="Backups">
                 <div className="gp-set__backups">
                   <span className="gp-set__summary">{`Daily · last 30 kept · ${last ? `backed up ${agoLong(last.at, now).toLowerCase()}` : 'none yet'}`}</span>

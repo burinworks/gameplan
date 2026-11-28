@@ -39,6 +39,8 @@ const app = createApp({
   db,
   clock,
   uiDir,
+  dbPath,
+  version,
   backups: {
     last: () => lastBackup(backupDir),
     now: () => {

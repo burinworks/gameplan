@@ -90,9 +90,9 @@ test.describe('smoke', () => {
     await page.goto(engine.baseURL);
     await page.locator('.gp-rowitem', { hasText: 'Check the figures' }).click();
     const pane = page.getByLabel('Task', { exact: true });
-    await expect(pane.getByRole('button', { name: 'Approve' })).toBeVisible();
+    await expect(pane.getByRole('button', { name: 'Accept' })).toBeVisible();
     await shot(page, 'task-pane');
-    await pane.getByRole('button', { name: 'Approve' }).click();
+    await pane.getByRole('button', { name: 'Accept' }).click();
     await expect(pane.locator('.gp-chip', { hasText: /^Done$/ })).toBeVisible();
   });
 
@@ -121,7 +121,7 @@ test.describe('smoke', () => {
     await bar.click();
     const pane = page.getByLabel('Task', { exact: true });
     await expect(pane).toBeVisible();
-    await expect(pane.getByLabel('Start date')).toHaveValue(/\d/);
+    await expect(pane.getByRole('group', { name: 'Start' }).getByRole('button').first()).toHaveText(/\d/);
     await page.keyboard.press('Escape');
     await expect(pane).toHaveCount(0);
     const mod = (await page.evaluate(() => /mac/i.test(navigator.platform || navigator.userAgent))) ? 'Meta' : 'Control';

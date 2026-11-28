@@ -1,6 +1,6 @@
 /* App settings: two columns of panels inside <Page>. Grid column widths are token multiples. */
 .gp-set {
-  --set-label: calc(var(--gp-s28) * 5); /* 140 */
+  --set-label: calc(var(--gp-s28) * 7); /* 196, fits "Show weekends on timelines" on one line */
   --set-label-narrow: calc(var(--gp-s18) * 5); /* 90 */
   --set-text-max: calc(var(--gp-s24) * 10); /* 240 */
 }

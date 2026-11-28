@@ -102,8 +102,8 @@ describe('NewProject template cards and areas', () => {
     mount(<NewProject onClose={() => {}} />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole('radio', { name: /Report/ }));
-    expect(screen.getByRole('button', { name: 'Remove Research' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Remove Design' })).toBeInTheDocument();
+    expect(screen.getByText('Research', { selector: '.gp-token__name' })).toBeInTheDocument();
+    expect(screen.getByText('Design', { selector: '.gp-token__name' })).toBeInTheDocument();
     expect(screen.getByText(/^Outline [A-Z][a-z]{2} \d+ · Draft .* · Final /)).toBeInTheDocument();
     await user.type(screen.getByRole('textbox', { name: 'Areas' }), 'Review{Enter}');
     await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Q1');
@@ -112,6 +112,17 @@ describe('NewProject template cards and areas', () => {
     const b = bodyOf(fn, 'POST', '/api/projects');
     expect(b.template).toBe('report');
     expect(b.areas).toEqual([{ name: 'Review' }]);
+  });
+
+  it('template areas have no remove button and are aria-disabled; added areas keep it', async () => {
+    mockFetch(routes());
+    mount(<NewProject onClose={() => {}} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('radio', { name: /Report/ }));
+    await user.type(screen.getByRole('textbox', { name: 'Areas' }), 'Review{Enter}');
+    expect(screen.queryByRole('button', { name: 'Remove Research' })).toBeNull();
+    expect(screen.getByText('Research', { selector: '.gp-token__name' }).closest('.gp-token')).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('button', { name: 'Remove Review' })).toBeInTheDocument();
   });
 
   it('switching back to Blank drops the template areas', async () => {
