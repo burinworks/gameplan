@@ -9,7 +9,7 @@ import { usePaneNav } from '../../pane/Pane';
 import { weekStartOf, type Zoom } from '../../lib/timeline';
 import { useDraftBar } from '../../pane/draftBar';
 import { Timeline, type TLBar, type TLGroup, type TLLink, type TLRow } from '../../timeline/Timeline';
-import { EmptyState } from '../../ui';
+import { TimelineEmpty } from '../../timeline/TimelineEmpty';
 
 export type GroupBy = 'milestone' | 'area';
 
@@ -41,13 +41,14 @@ function saveCollapsed(slug: string, ids: string[]): void {
 }
 
 const atRisk = (t: TreeTask): boolean => t.health === 'late' || t.health === 'conflict';
+const FALLBACK = 'var(--gp-accent)';
 
 export function TimelineTab({ slug, zoom = 'week', groupBy = 'milestone' }: { slug: string; zoom?: Zoom; groupBy?: GroupBy }) {
   const project = useProject(slug);
   const settings = useSettings();
   const reschedule = useReschedule();
   const addDependency = useAddDependency();
-  const { openTask, openNewTask } = usePaneNav();
+  const { openTask, openNewTask, openNewMilestone } = usePaneNav();
   const pane = parsePane(useSearch());
   const selectedId = pane?.kind === 'task' ? pane.taskId : undefined;
   const weekStart = settings.data?.week_start === 'sun' ? 'sun' : 'mon';
@@ -70,19 +71,40 @@ export function TimelineTab({ slug, zoom = 'week', groupBy = 'milestone' }: { sl
   const built = useMemo(() => {
     const tree = project.data;
     if (!tree) return null;
-    const projectColor = tree.project.color ?? 'var(--gp-accent)';
     const taskIds = new Set<string>();
     const milestoneIds = new Set<string>();
 
-    const taskRow = (t: TreeTask, group: string): TLRow => {
+    const milestoneOf = new Map(tree.milestones.map((m) => [m.id, m]));
+    const dueOf = (m: (typeof tree.milestones)[number]): string | null => m.due ?? null;
+
+    /** A task bar: its milestone's colour, its area's colour as an end strip, a risk ring when late or past its milestone. */
+    const taskRow = (t: TreeTask, group: string, milestoneId: string): TLRow => {
       taskIds.add(t.id);
+      const m = milestoneOf.get(milestoneId);
       const s = t.start ?? t.end;
       const e = t.end ?? t.start;
+      const due = m ? dueOf(m) : null;
+      const pastDue = !!(e && due && e > due);
+      const risky = atRisk(t) || pastDue;
       const bars: TLBar[] =
         s && e
-          ? [{ id: t.id, kind: 'task', label: t.title, start: s, end: e, color: t.area?.color ?? projectColor, progress: t.progress.pct, risk: atRisk(t), draggable: true }]
+          ? [
+              {
+                id: t.id,
+                kind: 'task',
+                label: t.title,
+                start: s,
+                end: e,
+                color: t.milestoneColor ?? m?.color ?? FALLBACK,
+                area: t.area?.color ?? undefined,
+                progress: t.progress.pct,
+                risk: risky,
+                pastMark: pastDue && groupBy === 'milestone' && m ? m.id : undefined,
+                draggable: true,
+              },
+            ]
           : [];
-      return { id: t.id, label: t.title, meta: t.end ? fmtDate(t.end, now) : undefined, dot: atRisk(t) ? 'risk' : undefined, bars, group };
+      return { id: t.id, label: t.title, meta: t.end ? fmtDate(t.end, now) : undefined, dot: risky ? 'risk' : undefined, bars, group };
     };
 
     const groups: TLGroup[] = [];
@@ -92,25 +114,28 @@ export function TimelineTab({ slug, zoom = 'week', groupBy = 'milestone' }: { sl
     if (groupBy === 'milestone') {
       for (const m of tree.milestones) {
         const due = m.due ?? m.span.end ?? undefined;
-        const late = m.health === 'late' || m.health === 'conflict';
+        const late = m.health === 'late' || m.health === 'conflict' || m.tasks.some((t) => !!(m.due && t.end && t.end > m.due));
+        const color = m.color ?? FALLBACK;
         groups.push({
           id: m.id,
           label: m.name,
           collapsed: collapsed.includes(m.id),
           due: due ? fmtDate(due, now) : undefined,
-          mark: due ? { id: m.id, date: due, color: projectColor, risk: late } : undefined,
+          swatch: color,
+          mark: due ? { id: m.id, date: due, color, risk: late } : undefined,
         });
         milestoneIds.add(m.id);
-        for (const t of m.tasks) rows.push(taskRow(t, m.id));
+        for (const t of m.tasks) rows.push(taskRow(t, m.id, m.id));
       }
     } else {
-      const all = tree.milestones.flatMap((m) => m.tasks);
+      const all = tree.milestones.flatMap((m) => m.tasks.map((t) => ({ t, mid: m.id })));
       const buckets = [...tree.project.areas.map((a) => ({ id: a.id, label: a.name })), { id: NO_AREA, label: 'No area' }];
       for (const b of buckets) {
-        const ts = all.filter((t) => (t.area?.id ?? NO_AREA) === b.id);
+        const ts = all.filter(({ t }) => (t.area?.id ?? NO_AREA) === b.id);
         if (!ts.length) continue;
-        groups.push({ id: b.id, label: b.label, collapsed: collapsed.includes(b.id) });
-        for (const t of ts) rows.push(taskRow(t, b.id));
+        const area = tree.project.areas.find((a) => a.id === b.id);
+        groups.push({ id: b.id, label: b.label, collapsed: collapsed.includes(b.id), swatch: area?.color ?? undefined });
+        for (const { t, mid } of ts) rows.push(taskRow(t, b.id, mid));
       }
     }
 
@@ -119,7 +144,19 @@ export function TimelineTab({ slug, zoom = 'week', groupBy = 'milestone' }: { sl
       const row: TLRow = {
         id: 'draft',
         label: 'Untitled task',
-        bars: [{ id: 'draft', kind: 'draft', label: 'Untitled task', start: draft.start, end: draft.end, color: projectColor, progress: 0, risk: false, draggable: false }],
+        bars: [
+          {
+            id: 'draft',
+            kind: 'draft',
+            label: 'Untitled task',
+            start: draft.start,
+            end: draft.end,
+            color: (draft.milestoneId ? milestoneOf.get(draft.milestoneId)?.color : undefined) ?? tree.milestones[0]?.color ?? FALLBACK,
+            progress: 0,
+            risk: false,
+            draggable: false,
+          },
+        ],
         group: g,
       };
       // Rows of one group must stay contiguous: insert after the last row of that group.
@@ -156,7 +193,14 @@ export function TimelineTab({ slug, zoom = 'week', groupBy = 'milestone' }: { sl
         selectedId={selectedId}
         empty={
           built.hasTasks ? undefined : (
-            <EmptyState overlay title="No tasks yet" action={{ label: 'Add a task', onClick: () => openNewTask(slug) }} />
+            <TimelineEmpty
+              title="No tasks yet"
+              hint="Add a task, or set a milestone to aim for."
+              choices={[
+                { label: 'New task', visual: 'task', onClick: () => openNewTask(slug) },
+                { label: 'New milestone', visual: 'milestone', onClick: () => openNewMilestone(slug) },
+              ]}
+            />
           )
         }
         rows={built.rows}

@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { Router } from 'wouter';
 import { memoryLocation } from 'wouter/memory-location';
 import { describe, expect, it } from 'vitest';
+import { HEADER_H } from '../src/lib/timeline';
 import { AppActionsContext } from '../src/app/appActions';
 import { Home } from '../src/screens/home/Home';
 import { PlanPicker } from '../src/screens/home/PlanPicker';
@@ -86,7 +87,10 @@ describe('Home empty states', () => {
     expect(container.querySelector('.tl-today-line')).not.toBeNull();
     expect(container.querySelector('.tl-weekend')).not.toBeNull();
     // the canvas is sized to the container, not to the (empty) rows
-    expect((container.querySelector('.tl-canvas') as HTMLElement).style.minHeight).toBe('40px');
+    expect((container.querySelector('.tl-canvas') as HTMLElement).style.minHeight).toBe(`${HEADER_H}px`);
+    // the prompt sits on its own card with a square choice
+    expect(container.querySelector('[data-timeline-empty] .tl-empty-card')).not.toBeNull();
+    expect(container.querySelector('.tl-empty-choice .tl-empty-vis')).not.toBeNull();
   });
 
   it('the CTA opens the New project action', async () => {

@@ -22,6 +22,7 @@ export function Arrows({
   height,
   pitch = ROW_PITCH,
   pending,
+  risks = [],
 }: {
   links: ArrowLink[];
   pos: Map<string, ArrowPos>;
@@ -30,10 +31,25 @@ export function Arrows({
   /** Row pitch, for routing a link between bars on the same line. */
   pitch?: number;
   pending?: { fromId: string; x: number; y: number; target: string | null } | null;
+  /** Dashed risk lines (precomputed paths) from a bar that runs past its milestone to the diamond. */
+  risks?: { id: string; d: string }[];
 }) {
   const from = pending ? pos.get(pending.fromId) : undefined;
   return (
     <svg className="tl-arrows" width={width} height={height} aria-hidden="true">
+      {risks.map((r) => (
+        <path
+          key={`risk:${r.id}`}
+          className="tl-riskline"
+          data-risk-line={r.id}
+          d={r.d}
+          stroke="var(--gp-risk)"
+          strokeWidth={1.3}
+          strokeDasharray="3 3"
+          strokeLinejoin="round"
+          fill="none"
+        />
+      ))}
       {links.map((l) => {
         const a = pos.get(l.fromId);
         const b = pos.get(l.toId);

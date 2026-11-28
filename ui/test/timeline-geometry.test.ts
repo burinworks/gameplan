@@ -13,6 +13,12 @@ import {
   weekStartOf,
   dayTicks,
   dayWidth,
+  monthTicks,
+  minorLines,
+  monthYear,
+  pctFits,
+  riskPath,
+  ticksFor,
 } from '../src/lib/timeline';
 
 const FROM = '2026-11-16';
@@ -46,19 +52,60 @@ describe('timeline geometry', () => {
     expect(barGeom('2026-11-16', '2026-11-16', FROM, TO, 6)?.w).toBe(4);
   });
 
-  it('todayX centres on the day', () => {
-    expect(todayX(FROM, '2026-11-27', 16)).toBe(184);
+  it('todayX is the left edge of the day', () => {
+    expect(todayX(FROM, '2026-11-27', 16)).toBe(176);
   });
 
-  it('weekTicks gives one per week start', () => {
-    const ticks = weekTicks(FROM, '2027-01-10', 16, 'mon', '2026-11-27');
+  it('weekTicks gives one per week start, naming the month only on its first week', () => {
+    const ticks = weekTicks(FROM, '2027-01-10', 16, 'mon');
     expect(ticks).toHaveLength(8);
     expect(ticks.slice(0, 3).map((t) => t.x)).toEqual([0, 112, 224]);
-    expect(ticks[0]?.label).toBe('Nov 16');
-    expect(ticks[7]?.label).toBe('Jan 4');
-    // a label more than about three months away carries its year
-    expect(weekTicks('2027-03-01', '2027-03-10', 16, 'mon', '2026-11-27')[0]?.label).toBe('Mar 1, 2027');
-    expect(weekTicks(FROM, '2026-12-01', 16, 'sun', '2026-11-27')[0]).toEqual({ x: 96, label: 'Nov 22' });
+    expect(ticks.map((t) => t.label)).toEqual(['Nov 16', '23', '30', 'Dec 7', '14', '21', '28', 'Jan 4']);
+    expect(weekTicks(FROM, '2026-12-01', 16, 'sun')[0]).toEqual({ x: 96, label: 'Nov 22', month: true });
+    expect(ticks[1]?.month).toBeUndefined();
+  });
+
+  it('month zoom ticks once per month, with the year only when it is not this year', () => {
+    const t = monthTicks('2026-11-16', '2027-02-10', 6, '2026-11-27');
+    expect(t.map((x) => x.label)).toEqual(['Dec', 'Jan 2027', 'Feb 2027']);
+    expect(t[0]?.x).toBe(15 * 6);
+    // labels are at least a month apart: never closer than 28 days
+    for (let i = 1; i < t.length; i++) expect(t[i]!.x - t[i - 1]!.x).toBeGreaterThanOrEqual(28 * 6);
+    expect(ticksFor('month', '2026-11-16', '2027-02-10', 6, 'mon', '2026-11-27')).toEqual(t);
+  });
+
+  it('month zoom draws week sub-lines that skip month starts', () => {
+    const m = minorLines('2026-11-30', '2027-03-08', 6, 'mon');
+    expect(m[0]).toBe(0);
+    expect(m).not.toContain(dayIndex('2026-11-30', '2027-02-01') * 6); // Feb 1 2027 is a Monday and a month line
+  });
+
+  it('labels never overlap at any zoom', () => {
+    const today = '2026-11-27';
+    for (const zoom of ['day', 'week', 'month'] as const) {
+      for (const variant of ['home', 'project'] as const) {
+        const dw = dayWidth(zoom, variant);
+        const t = ticksFor(zoom, '2026-11-02', '2027-03-01', dw, 'mon', today);
+        for (let i = 1; i < t.length; i++) {
+          // 11px Inter label (about 5.9px per character), 6px inset, 4px clear space
+          const w = 6 + t[i - 1]!.label.length * 5.9 + 4;
+          expect(t[i]!.x - t[i - 1]!.x, `${zoom}/${variant} ${t[i - 1]!.label} → ${t[i]!.label}`).toBeGreaterThanOrEqual(w);
+        }
+      }
+    }
+  });
+
+  it('monthYear names the month in full', () => {
+    expect(monthYear('2027-01-04')).toBe('January 2027');
+  });
+
+  it('pctFits needs room for the number', () => {
+    expect(pctFits(40, 20)).toBe(false);
+    expect(pctFits(40, 60)).toBe(true);
+  });
+
+  it('riskPath goes up from the bar end to the diamond row, then left to the diamond', () => {
+    expect(riskPath({ x2: 300, top: 60 }, { x: 200, y: 19, r: 8 })).toBe('M300 60 V19 H208');
   });
 
   it('weekendCols spans Sat+Sun', () => {
@@ -106,10 +153,10 @@ describe('timeline geometry', () => {
     expect(weekStartOf('2026-11-22', 'mon')).toBe('2026-11-16');
   });
 
-  it('day zoom ticks every day, naming week starts in full', () => {
-    const t = dayTicks('2026-11-22', '2026-11-25', 40, 'mon', '2026-11-27');
+  it('day zoom ticks every day; only the 1st carries the month', () => {
+    const t = dayTicks('2026-11-29', '2026-12-02', 40);
     expect(t.map((x) => x.x)).toEqual([0, 40, 80, 120]);
-    expect(t.map((x) => x.label)).toEqual(['Nov 22', 'Nov 23', '24', '25']);
+    expect(t.map((x) => x.label)).toEqual(['29', '30', 'Dec 1', '2']);
     expect(dayWidth('day')).toBe(40);
     expect(dayWidth('week', 'project')).toBe(13);
   });

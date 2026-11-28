@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import type { TimelineRows } from '../../api/types';
 import { useLocation } from 'wouter';
 import { useCapture, useHome, useSettings, useTimeline } from '../../api/hooks';
 import { useAppActions } from '../../app/appActions';
@@ -7,6 +8,7 @@ import { useHighlight } from '../../api/live';
 import { fmtActor, fmtActorAt, fmtAgo, fmtHeaderDate, fmtRange, fmtTodos } from '../../lib/format';
 import { weekStartOf } from '../../lib/timeline';
 import { Timeline, type TLRow } from '../../timeline/Timeline';
+import { TimelineEmpty } from '../../timeline/TimelineEmpty';
 import { Button, Chip, EmptyState, Field, Icon, Panel, Row } from '../../ui';
 import { PlanPicker } from './PlanPicker';
 import './home.css';
@@ -37,7 +39,7 @@ function PlanRow({ p, onOpen }: { p: PlanItem; onOpen: () => void }) {
         }
       }}
     >
-      <span className="home__badge num" data-testid="plan-n" style={{ ['--badge' as string]: p.task.color ?? 'var(--gp-text3)' }}>
+      <span className="home__badge num" data-testid="plan-n" style={{ ['--badge' as string]: p.task.milestoneColor ?? 'var(--gp-text3)' }}>
         {p.n}
       </span>
       <span className="home__plantext">
@@ -75,23 +77,28 @@ export function Home() {
   // Start on a week boundary, one week before the current one, so every column is a full labelled week.
   const from = today ? addDays(weekStartOf(today, weekStart), -7) : undefined;
   const to = today ? addDays(today, 45) : undefined;
-  const tl = useTimeline(from, to);
+  // The timeline grows as it scrolls; fetch whatever window it currently covers.
+  const [grown, setGrown] = useState<{ from: string; to: string } | null>(null);
+  const tl = useTimeline(grown?.from ?? from, grown?.to ?? to);
+  // Keep showing the last rows while a wider window loads, so the bars (and the empty prompt) do not flicker.
+  const lastData = useRef<TimelineRows | undefined>(undefined);
+  if (tl.data) lastData.current = tl.data;
+  const tlData = tl.data ?? lastData.current;
 
   const { rows, byMilestone } = useMemo(() => {
     const byMilestone = new Map<string, string>();
-    const rows: TLRow[] = (tl.data ?? []).map((r) => {
+    const rows: TLRow[] = (tlData ?? []).map((r) => {
       for (const m of r.milestones) byMilestone.set(m.id, r.project.slug);
       return {
         id: r.project.slug,
         label: r.project.name,
-        swatch: r.color ?? undefined,
         bars: r.milestones.map((m) => ({
           id: m.id,
           kind: 'milestone' as const,
           label: m.name,
           start: m.start,
           end: m.end,
-          color: r.color ?? 'var(--gp-text3)',
+          color: m.color ?? 'var(--gp-text3)',
           progress: m.progress.pct,
           risk: m.atRisk || m.missed,
           diamond: true,
@@ -100,7 +107,7 @@ export function Home() {
       };
     });
     return { rows, byMilestone };
-  }, [tl.data]);
+  }, [tlData]);
 
   if (!home.data || !from || !to) return <section className="home" aria-label="Home" />;
   const h = home.data;
@@ -155,7 +162,7 @@ export function Home() {
                     key={p.task.id}
                     title={p.task.title}
                     meta={`↳ ${p.resume.note}`}
-                    swatch={p.task.color}
+                    swatch={p.task.milestoneColor}
                     trailing={p.resume.by && p.resume.at ? fmtActorAt(p.resume.by, p.resume.at, now) : undefined}
                     onClick={() => open(p.task.project, p.task.id)}
                     highlightId={p.task.id}
@@ -190,7 +197,6 @@ export function Home() {
                   key={r.task.id}
                   title={r.task.title}
                   meta={[r.by ? fmtActor(r.by) : null, fmtTodos(r.todos.done, r.todos.total), fmtAgo(r.at, now)].filter(Boolean).join(' · ')}
-                  swatch={r.color}
                   onClick={() => open(r.project, r.task.id)}
                   highlightId={r.task.id}
                 />
@@ -203,7 +209,7 @@ export function Home() {
               <p className="home__empty">Nothing at risk</p>
             ) : (
               h.atRisk.map((r) => (
-                <Row key={r.id} title={r.title} meta={r.reasons[0] ?? r.projectName} swatch={r.color} onClick={() => open(r.project, r.id)} highlightId={r.id} />
+                <Row key={r.id} title={r.title} meta={r.reasons[0] ?? r.projectName} onClick={() => open(r.project, r.id)} highlightId={r.id} />
               ))
             )}
           </Panel>
@@ -215,7 +221,6 @@ export function Home() {
                   key={r.eventId}
                   title={r.task.title ?? ''}
                   meta={`${fmtRange(r.from.end ?? r.from.start, r.to.end ?? r.to.start, h.today)} · ${fmtActor(r.actor)}`}
-                  swatch={r.color}
                   onClick={() => open(r.project, r.task.id)}
                   highlightId={r.task.id}
                 />
@@ -250,8 +255,9 @@ export function Home() {
       <section className="gp-panel home__timeline tl-host" aria-label="Timeline">
         <Timeline
           rows={rows}
-          from={from}
-          to={to}
+          from={grown?.from ?? from}
+          to={grown?.to ?? to}
+          onRangeChange={(f, t) => setGrown({ from: f, to: t })}
           today={h.today}
           zoom="week"
           weekStart={weekStart}
@@ -263,10 +269,10 @@ export function Home() {
           initialScrollToToday
           empty={
             rows.length === 0 ? (
-              <EmptyState
-                overlay
+              <TimelineEmpty
                 title="No projects yet"
-                action={{ label: 'Create your first project', onClick: openNewProject }}
+                hint="Projects and their milestones show up here."
+                choices={[{ label: 'Create your first project', visual: 'project', onClick: openNewProject }]}
               />
             ) : undefined
           }
