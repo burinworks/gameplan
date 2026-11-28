@@ -1,12 +1,12 @@
-import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
-import { useAddDependency, useCreateMilestone, useCreateTask, useProject, useSettings, useTriage, type CreateTaskBody } from '../api/hooks';
-import type { Executor, Priority } from '../api/types';
+import { useAddDependency, useCreateTask, useProject, useSettings, useTriage, type CreateTaskBody } from '../api/hooks';
+import type { Executor, Priority, ProjectTree } from '../api/types';
 import { isTab, paths } from '../app/routes';
 import { today } from '../app/today';
 import { Button, DateField, Segmented, Select } from '../ui';
 import { addDays, lengthDays } from './dates';
+import { MilestonePopover } from './MilestonePopover';
 import { areaOptions, depItems, depTargets, DepChips, EXECUTORS, milestoneOptions, PRIORITIES, Row, TitleField, useAddNew, type DepTarget } from './Details';
 import { setDraftBar } from './draftBar';
 import { AddLink, DraftLinks } from './Links';
@@ -16,20 +16,9 @@ import { DraftTodos } from './Todos';
 import './task-pane.css';
 
 /** Shown instead of the form when the project has no milestone yet: a task always belongs to one. */
-function MilestoneFirst({ slug, weekStart, onCreated }: { slug: string; weekStart: 'mon' | 'sun'; onCreated: (id: string) => void }) {
-  const create = useCreateMilestone();
-  const qc = useQueryClient();
-  const [name, setName] = useState('');
-  const [due, setDue] = useState(() => addDays(today(), 14));
-  const busy = useRef(false);
-  const submit = () => {
-    if (!name.trim() || busy.current) return;
-    busy.current = true;
-    create.mutate({ slug, body: { name: name.trim(), due } }, { onSettled: () => void (busy.current = false), onSuccess: (m) => {
-          void qc.invalidateQueries({ queryKey: ['project', slug] });
-          onCreated(m.id);
-        } });
-  };
+function MilestoneFirst({ slug, tree, onCreated }: { slug: string; tree: ProjectTree | undefined; onCreated: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const btn = useRef<HTMLDivElement>(null);
   return (
     <section className="gp-tp__first" aria-label="Create a milestone first">
       <div className="gp-tp__first-head">
@@ -39,32 +28,21 @@ function MilestoneFirst({ slug, weekStart, onCreated }: { slug: string; weekStar
           <p className="gp-tp__first-text">Every task belongs to a milestone. Name the first one and pick its due date, then add the task.</p>
         </div>
       </div>
-      <div className="gp-tp__grid">
-        <Row label="Name">
-          <input
-            className="gp-pane__input"
-            dir="auto"
-            aria-label="Milestone name"
-            placeholder="e.g. First release"
-            value={name}
-            autoFocus
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-                e.preventDefault();
-                e.stopPropagation();
-                submit();
-              }
-            }}
-          />
-        </Row>
-        <Row label="Due">
-          <DateField label="Milestone due" value={due} onChange={setDue} required min={addDays(today(), 0)} weekStart={weekStart} />
-        </Row>
+      <div className="gp-tp__first-actions" ref={btn}>
+        <Button variant="primary" label="New milestone…" onClick={() => setOpen(true)} />
       </div>
-      <div className="gp-tp__first-actions">
-        <Button variant="primary" label="Create milestone" onClick={submit} disabled={!name.trim()} />
-      </div>
+      {open && btn.current && (
+        <MilestonePopover
+          slug={slug}
+          tree={tree}
+          anchor={btn.current}
+          onClose={() => setOpen(false)}
+          onCreated={(id) => {
+            setOpen(false);
+            onCreated(id);
+          }}
+        />
+      )}
     </section>
   );
 }
@@ -154,7 +132,7 @@ export function NewTask({ slug, milestoneId, title: initialTitle, inboxId }: { s
       </header>
 
       {noMilestone ? (
-        <MilestoneFirst slug={slug} weekStart={weekStart} onCreated={setMilestone} />
+        <MilestoneFirst slug={slug} tree={tree} onCreated={setMilestone} />
       ) : (
         <>
           <TitleField
@@ -171,7 +149,7 @@ export function NewTask({ slug, milestoneId, title: initialTitle, inboxId }: { s
 
           <section className="gp-tp__grid" aria-label="Details">
             <Row label="Milestone">
-              <Select label="Milestone" value={ms} onChange={setMilestone} options={milestoneOptions(tree)} onAdd={addNew.milestone} addPlaceholder="New milestone name" />
+              <Select label="Milestone" value={ms} onChange={setMilestone} options={milestoneOptions(tree)} addPopover={({ anchor, close, select }) => <MilestonePopover slug={slug} tree={tree} anchor={anchor} onClose={close} onCreated={select} />} />
             </Row>
             <Row label="Area">
               <Select label="Area" value={area} onChange={setArea} options={areaOptions(tree?.project.areas ?? [])} onAdd={addNew.area} addPlaceholder="New area name" />

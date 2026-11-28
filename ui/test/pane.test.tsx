@@ -360,15 +360,16 @@ describe('TaskPane', () => {
     expect(screen.queryByText('Depends on')).toBeNull();
   });
 
-  it('Milestone select: "Add new…" creates a milestone and moves the task to it', async () => {
+  it('Milestone select: "Add new…" opens a popover that creates the milestone and moves the task to it', async () => {
     const { fetchMock } = mount(<TaskPane taskId="t1" slug="acme" />, { ...taskRoutes(), 'POST /api/projects/acme/milestones': { id: 'm9', name: 'Docs' } });
     fireEvent.click(await screen.findByRole('button', { name: 'Milestone: Beta' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Add new…' }));
-    const input = screen.getByRole('textbox', { name: 'New milestone' });
-    fireEvent.change(input, { target: { value: 'Docs' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    await waitFor(() => expect(bodies(fetchMock, 'POST', '/api/projects/acme/milestones')).toEqual([{ name: 'Docs' }]));
+    const pop = within(screen.getByRole('dialog', { name: 'New milestone' }));
+    fireEvent.change(pop.getByRole('textbox', { name: 'Milestone name' }), { target: { value: 'Docs' } });
+    fireEvent.click(pop.getByRole('button', { name: 'Create milestone' }));
+    await waitFor(() => expect(bodies(fetchMock, 'POST', '/api/projects/acme/milestones')).toHaveLength(1));
     await waitFor(() => expect(bodies(fetchMock, 'PATCH', '/api/tasks/t1')).toEqual([{ milestoneId: 'm9' }]));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New milestone' })).toBeNull());
   });
 
   it('Area select: "Add new…" adds the area to the project and sets it', async () => {
@@ -576,13 +577,77 @@ describe('NewTask without milestones', () => {
     });
     expect(await screen.findByRole('region', { name: 'Create a milestone first' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Create task' })).toBeNull();
-    fireEvent.change(screen.getByRole('textbox', { name: 'Milestone name' }), { target: { value: 'First release' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Create milestone' }));
-    await waitFor(() => expect(bodies(fetchMock, 'POST', '/api/projects/acme/milestones')).toEqual([{ name: 'First release', due: addDays(today(), 14) }]));
+    fireEvent.click(screen.getByRole('button', { name: 'New milestone…' }));
+    const pop = within(screen.getByRole('dialog', { name: 'New milestone' }));
+    fireEvent.change(pop.getByRole('textbox', { name: 'Milestone name' }), { target: { value: 'First release' } });
+    fireEvent.click(pop.getByRole('button', { name: 'Create milestone' }));
+    await waitFor(() => expect(bodies(fetchMock, 'POST', '/api/projects/acme/milestones')).toEqual([{ name: 'First release', due: addDays(today(), 14), color: '#6E7CF5', status: 'planned' }]));
     const title = await screen.findByRole('textbox', { name: 'Title' });
     fireEvent.change(title, { target: { value: 'Ship it' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create task' }));
     await waitFor(() => expect(bodies(fetchMock, 'POST', '/api/milestones/mNew/tasks')).toHaveLength(1));
+  });
+});
+
+describe('Milestone popover (New task)', () => {
+  const open = async () => {
+    fireEvent.click(await screen.findByRole('button', { name: 'Milestone: Beta' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Add new…' }));
+    return within(screen.getByRole('dialog', { name: 'New milestone' }));
+  };
+  const routes = (post: unknown = { id: 'm9', name: 'Docs' }) => ({ '/api/projects/acme': projectTree(), 'POST /api/projects/acme/milestones': post });
+  const lastDue = () => {
+    const d = addDays('2026-12-01', 14);
+    return d < tomorrow() ? tomorrow() : d;
+  };
+
+  it('opens from "Add new…" in a fixed layer on body, name focused, with suggested due, next free colour and Planned', async () => {
+    mount(<NewTask slug="acme" milestoneId="m1" />, routes());
+    const pop = await open();
+    const el = screen.getByRole('dialog', { name: 'New milestone' });
+    expect(el.parentElement).toBe(document.body);
+    expect(pop.getByRole('textbox', { name: 'Milestone name' })).toHaveFocus();
+    expect(pop.getByRole('radio', { name: 'Teal' })).toBeChecked(); // Indigo and Amber are taken
+    expect(pop.getByRole('radio', { name: 'Planned' })).toBeChecked();
+    fireEvent.click(within(pop.getByRole('group', { name: 'Milestone due' })).getAllByRole('button')[0]!);
+    const cal = await screen.findByRole('dialog', { name: 'Milestone due calendar' });
+    expect(within(cal).getByRole('button', { pressed: true })).toHaveAttribute('data-date', lastDue());
+  });
+
+  it('creates with name, due, colour and status, then selects the new milestone and closes', async () => {
+    const { fetchMock } = mount(<NewTask slug="acme" milestoneId="m1" />, routes());
+    const pop = await open();
+    fireEvent.change(pop.getByRole('textbox', { name: 'Milestone name' }), { target: { value: ' Docs ' } });
+    fireEvent.click(pop.getByRole('radio', { name: 'Coral' }));
+    fireEvent.click(pop.getByRole('radio', { name: 'Active' }));
+    fireEvent.click(within(pop.getByRole('group', { name: 'Milestone due' })).getByRole('button', { name: 'Next day' }));
+    fireEvent.click(pop.getByRole('button', { name: 'Create milestone' }));
+    await waitFor(() => expect(bodies(fetchMock, 'POST', '/api/projects/acme/milestones')).toEqual([{ name: 'Docs', due: addDays(lastDue(), 1), color: '#E07A5F', status: 'active' }]));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New milestone' })).toBeNull());
+  });
+
+  it('Enter submits and Escape closes', async () => {
+    const { fetchMock } = mount(<NewTask slug="acme" milestoneId="m1" />, routes());
+    let pop = await open();
+    fireEvent.keyDown(pop.getByRole('textbox', { name: 'Milestone name' }), { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'New milestone' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Milestone: Beta' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Add new…' }));
+    pop = within(screen.getByRole('dialog', { name: 'New milestone' }));
+    const name = pop.getByRole('textbox', { name: 'Milestone name' });
+    fireEvent.change(name, { target: { value: 'Docs' } });
+    fireEvent.keyDown(name, { key: 'Enter' });
+    await waitFor(() => expect(bodies(fetchMock, 'POST', '/api/projects/acme/milestones')).toHaveLength(1));
+  });
+
+  it('shows the engine error inside the popover and stays open', async () => {
+    mount(<NewTask slug="acme" milestoneId="m1" />, routes(Response.json({ error: { code: 'invalid', message: 'due must be a date' } }, { status: 400 })));
+    const pop = await open();
+    fireEvent.change(pop.getByRole('textbox', { name: 'Milestone name' }), { target: { value: 'Docs' } });
+    fireEvent.click(pop.getByRole('button', { name: 'Create milestone' }));
+    expect(await pop.findByRole('alert')).toHaveTextContent('due must be a date');
+    expect(screen.getByRole('dialog', { name: 'New milestone' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Milestone: Beta' })).toBeInTheDocument();
   });
 });
 

@@ -5,6 +5,7 @@ import { useDraft } from '../lib/draft';
 import { fmtLate, statusLabel } from '../lib/format';
 import { Button, Chip, DateField, Icon, Segmented, Select, Undo } from '../ui';
 import { addDays, lengthDays } from './dates';
+import { MilestonePopover } from './MilestonePopover';
 import { areaOptions, depItems, depTargets, DepChips, EXECUTORS, milestoneOptions, PRIORITIES, Row, TitleField, useAddNew } from './Details';
 import { ExecutionLog } from './ExecutionLog';
 import { AddLink, Links } from './Links';
@@ -160,8 +161,7 @@ function TaskBody({ task, slug, onArchived }: { task: TaskDetail; slug: string; 
                 value={task.milestone.id}
                 onChange={(v) => v !== task.milestone.id && update.mutate({ id: task.id, patch: { milestoneId: v } })}
                 options={milestoneOptions(tree)}
-                onAdd={addNew.milestone}
-                addPlaceholder="New milestone name"
+                addPopover={({ anchor, close, select }) => <MilestonePopover slug={slug} tree={tree} anchor={anchor} onClose={close} onCreated={select} />}
               />
             </Row>
             <Row label="Area">

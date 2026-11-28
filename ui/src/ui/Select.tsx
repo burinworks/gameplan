@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon } from './Icon';
 import { Menu } from './Menu';
 
@@ -13,6 +13,8 @@ import { Menu } from './Menu';
  *  - onAdd?: adds a last item "Add newâ€¦"; choosing it turns the field into a name input. Enter calls onAdd(name);
  *    when it resolves to a value, that value is selected. Escape (or leaving it empty) cancels.
  *  - addPlaceholder?: placeholder of that name input (default "Name")
+ *  - addPopover?: instead of onAdd's inline name input, "Add newâ€¦" renders this node (a popover the caller owns,
+ *    anchored to the trigger). It gets the trigger element, close(), and select(value) which selects and closes.
  * Usage: <Select label="Status" value={s} onChange={setS} options={[{ value: 'todo', label: 'To do' }]} />
  */
 export interface SelectOption {
@@ -31,6 +33,7 @@ export interface SelectProps {
   align?: 'start' | 'end';
   onAdd?: (name: string) => Promise<string | void> | string | void;
   addPlaceholder?: string;
+  addPopover?: (api: { anchor: HTMLElement; close: () => void; select: (v: string) => void }) => ReactNode;
 }
 
 export const ADD_NEW = 'Add newâ€¦';
@@ -86,10 +89,12 @@ function AddInput({ label, placeholder, onDone, onAdd }: { label: string; placeh
   );
 }
 
-export function Select({ value, onChange, options, label, placeholder = 'Chooseâ€¦', align = 'start', onAdd, addPlaceholder = 'Name' }: SelectProps) {
+export function Select({ value, onChange, options, label, placeholder = 'Chooseâ€¦', align = 'start', onAdd, addPlaceholder = 'Name', addPopover }: SelectProps) {
   const [adding, setAdding] = useState(false);
+  const wrap = useRef<HTMLSpanElement>(null);
+  const anchor = adding && addPopover ? (wrap.current?.querySelector<HTMLElement>('button') ?? null) : null;
   const cur = options.find((o) => o.value === value);
-  if (adding && onAdd)
+  if (adding && onAdd && !addPopover)
     return (
       <AddInput
         label={label}
@@ -101,7 +106,7 @@ export function Select({ value, onChange, options, label, placeholder = 'Chooseâ
         }}
       />
     );
-  return (
+  const menu = (
     <Menu
       label={`${label}: ${cur?.label ?? placeholder}`}
       align={align}
@@ -114,7 +119,7 @@ export function Select({ value, onChange, options, label, placeholder = 'Chooseâ
           leading: <Marker o={o} />,
           onSelect: () => onChange(o.value),
         })),
-        ...(onAdd ? [{ label: ADD_NEW, leading: <Icon name="plus" size={12} />, onSelect: () => setAdding(true) }] : []),
+        ...(onAdd || addPopover ? [{ label: ADD_NEW, leading: <Icon name="plus" size={12} />, onSelect: () => setAdding(true) }] : []),
       ]}
       trigger={
         <>
@@ -128,5 +133,20 @@ export function Select({ value, onChange, options, label, placeholder = 'Chooseâ
         </>
       }
     />
+  );
+  if (!addPopover) return menu;
+  return (
+    <span ref={wrap} className="gp-select__wrap">
+      {menu}
+      {anchor &&
+        addPopover({
+          anchor,
+          close: () => setAdding(false),
+          select: (v) => {
+            setAdding(false);
+            onChange(v);
+          },
+        })}
+    </span>
   );
 }

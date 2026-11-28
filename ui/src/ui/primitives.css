@@ -935,3 +935,6 @@
     backdrop-filter: none;
   }
 }
+.gp-select__wrap {
+  display: contents;
+}

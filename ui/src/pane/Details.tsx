@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import type { KeyboardEvent, ReactNode } from 'react';
-import { useConfigureProject, useCreateMilestone } from '../api/hooks';
+import { useConfigureProject } from '../api/hooks';
 import type { Executor, Priority, ProjectTree } from '../api/types';
 import { executorLabel } from '../lib/format';
 import { Icon, Menu, type MenuItem, type SelectOption } from '../ui';
@@ -28,18 +28,12 @@ export function milestoneOptions(tree: ProjectTree | undefined): SelectOption[] 
   return (tree?.milestones ?? []).map((m) => ({ value: m.id, label: m.name, diamond: m.color ?? 'var(--gp-text3)' }));
 }
 
-/** "Add new…" handlers for the Milestone and Area selects. Each resolves to the value to select. */
+/** "Add new…" handler for the Area select. Resolves to the value to select. */
 export function useAddNew(slug: string, tree: ProjectTree | undefined) {
-  const createMs = useCreateMilestone();
   const configure = useConfigureProject();
   const qc = useQueryClient();
   const refresh = () => void qc.invalidateQueries({ queryKey: ['project', slug] });
   return {
-    milestone: async (name: string) => {
-      const m = await createMs.mutateAsync({ slug, body: { name } });
-      refresh();
-      return m.id;
-    },
     area: async (name: string) => {
       // The whole list is sent: never from a project that has not loaded (it would drop the existing areas).
       if (!tree) throw new Error('project not loaded');
