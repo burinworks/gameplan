@@ -106,8 +106,26 @@ export const TEMPLATES: readonly Template[] = [
   },
 ];
 
-export function listTemplates(): { id: Template['id']; name: string; milestones: number; tasks: number }[] {
-  return TEMPLATES.map((t) => ({ id: t.id, name: t.name, milestones: t.milestones.length, tasks: t.tasks.length }));
+export interface TemplateSummary {
+  id: Template['id'];
+  name: string;
+  milestones: number;
+  tasks: number;
+  /** Area names the template creates. */
+  areas: string[];
+  /** Milestone names with their due offset in days from the start date. */
+  milestoneOffsets: { name: string; offsetDays: number }[];
+}
+
+export function listTemplates(): TemplateSummary[] {
+  return TEMPLATES.map((t) => ({
+    id: t.id,
+    name: t.name,
+    milestones: t.milestones.length,
+    tasks: t.tasks.length,
+    areas: t.areas.map((a) => a.name),
+    milestoneOffsets: t.milestones.map((m) => ({ name: m.name, offsetDays: m.offsetDays })),
+  }));
 }
 
 export function templateById(id: string): Template | undefined {

@@ -57,6 +57,13 @@
   line-height: var(--gp-lh-meta);
   color: var(--gp-text2);
 }
+.gp-search__hint {
+  margin: 0;
+  padding: var(--gp-s4) var(--gp-s10) var(--gp-s6);
+  font-size: var(--gp-fs-meta);
+  line-height: var(--gp-lh-meta);
+  color: var(--gp-text3);
+}
 .gp-search__empty {
   margin: 0;
   padding: var(--gp-s8) var(--gp-s10);

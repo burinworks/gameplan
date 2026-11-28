@@ -1,8 +1,141 @@
-.pa {
-  padding: var(--gp-s24) var(--gp-s32); /* moves to <Page> when this screen adopts it */
+/* Paused & archived. The Page frame supplies the header and divider; sections share the full body height. */
+.pa__body {
   display: flex;
   flex-direction: column;
-  gap: var(--gp-s14);
-  max-width: calc(var(--gp-sheetW) + var(--gp-sidebar));
-  margin: 0 auto;
+  gap: var(--gp-s8);
+  padding: var(--gp-s8) var(--gp-s24) var(--gp-s24);
+}
+.pa__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gp-s8);
+}
+.pa__section--empty {
+  flex: 1;
+  min-height: 0;
+}
+.pa__heading {
+  margin: var(--gp-s16) 0 var(--gp-s4);
+  font-size: var(--gp-fs-meta);
+  line-height: var(--gp-lh-meta);
+  font-weight: var(--gp-fw-semibold);
+  color: var(--gp-text2);
+}
+.pa__section--archived .pa__heading {
+  margin-top: var(--gp-s24);
+}
+.pa__panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-radius: var(--gp-r12);
+  background: var(--gp-panel);
+}
+
+.pa__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 0.9fr) auto;
+  align-items: center;
+  gap: var(--gp-s16);
+  padding: 0 var(--gp-s16);
+}
+.pa__row--paused {
+  min-height: calc(var(--gp-s28) * 2 + var(--gp-s4));
+  border-radius: var(--gp-r12);
+  background: var(--gp-panel);
+}
+.pa__row--archived {
+  min-height: calc(var(--gp-s24) * 2 + var(--gp-s4));
+  border-bottom: 1px solid var(--gp-grid);
+}
+.pa__cell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.pa__name {
+  gap: var(--gp-s10);
+}
+.pa__name--muted {
+  color: var(--gp-text2);
+}
+.pa__swatch {
+  flex: none;
+  width: var(--gp-s10);
+  height: var(--gp-s10);
+  border-radius: var(--gp-r3);
+}
+.pa__swatch--muted {
+  background: var(--gp-track);
+}
+.pa__strong,
+.pa__medium,
+.pa__ellipsis {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.pa__strong {
+  font-weight: var(--gp-fw-semibold);
+}
+.pa__medium {
+  font-weight: var(--gp-fw-medium);
+}
+.pa__next {
+  gap: var(--gp-s8);
+  color: var(--gp-text2);
+}
+.pa__diamond {
+  flex: none;
+  width: var(--gp-diamondSm);
+  height: var(--gp-diamondSm);
+  border-radius: var(--gp-r2);
+  transform: rotate(45deg);
+}
+.pa__progress {
+  gap: var(--gp-s10);
+}
+.pa__bar {
+  flex: 1;
+  max-width: calc(var(--gp-s32) * 3 - var(--gp-s6));
+  height: var(--gp-s4);
+  border-radius: var(--gp-r2);
+  background: var(--gp-track);
+  overflow: hidden;
+}
+.pa__bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--gp-accent);
+}
+.pa__pct,
+.pa__summary {
+  font-size: var(--gp-fs-meta);
+  line-height: var(--gp-lh-meta);
+  color: var(--gp-text2);
+}
+.pa__when {
+  font-size: var(--gp-fs-meta);
+  line-height: var(--gp-lh-meta);
+  color: var(--gp-text3);
+}
+.pa__btn.gp-btn {
+  height: var(--gp-rowSm);
+  padding: 0 var(--gp-s12);
+  font-size: var(--gp-fs-body);
+}
+.pa__btn.gp-btn--quiet {
+  border-radius: var(--gp-r8);
+}
+.pa .gp-chip--ok {
+  color: var(--gp-ok);
+  background: color-mix(in srgb, var(--gp-ok) 12%, transparent);
+}
+.pa .gp-chip--neutral {
+  color: var(--gp-text2);
+}
+.pa .gp-chip__dot {
+  background: currentColor;
 }
