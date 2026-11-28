@@ -77,8 +77,8 @@ describe('AppSettings', () => {
 
   it('lists connected agents with time and calls', async () => {
     setup();
-    const row = (await screen.findAllByText('Codex')).map((n) => n.closest('.gp-rowitem')).find(Boolean) as HTMLElement;
-    expect(within(row).getByText('2h')).toBeInTheDocument();
+    const row = (await screen.findAllByText('Codex')).map((n) => n.closest('.gp-set__agent')).find(Boolean) as HTMLElement;
+    expect(within(row).getByText('2 h ago')).toBeInTheDocument();
     expect(within(row).getByText('14 calls')).toBeInTheDocument();
   });
 
@@ -93,9 +93,9 @@ describe('AppSettings', () => {
 
   it('backs up now and links exports', async () => {
     const f = setup();
-    const link = await screen.findByRole('link', { name: 'Export JSON' });
+    const link = await screen.findByRole('link', { name: 'JSON' });
     expect(link).toHaveAttribute('href', '/api/export?format=json');
-    expect(screen.getByRole('link', { name: 'Export Markdown' })).toHaveAttribute('href', '/api/export?format=md');
+    expect(screen.getByRole('link', { name: 'Markdown' })).toHaveAttribute('href', '/api/export?format=md');
     await userEvent.click(screen.getByRole('button', { name: 'Back up now' }));
     await waitFor(() => expect(f.mock.calls.some(([u, i]) => String(u) === '/api/backup' && (i as RequestInit | undefined)?.method === 'POST')).toBe(true));
   });
@@ -105,5 +105,49 @@ describe('AppSettings', () => {
     await userEvent.click(await screen.findByRole('radio', { name: 'Dark' }));
     await screen.findByText('Bad value');
     expect(screen.getByTestId('line')).toBeEmptyDOMElement();
+  });
+
+  it('lays out General and Home left, Agents & MCP and Data right, with a running status', async () => {
+    setup();
+    await screen.findByRole('heading', { name: 'Settings' });
+    const cols = document.querySelectorAll('.gp-set__col');
+    expect(cols).toHaveLength(2);
+    expect(within(cols[0] as HTMLElement).getByRole('heading', { name: 'General' })).toBeInTheDocument();
+    expect(within(cols[0] as HTMLElement).getByRole('heading', { name: 'Home' })).toBeInTheDocument();
+    expect(within(cols[1] as HTMLElement).getByRole('heading', { name: 'Agents & MCP' })).toBeInTheDocument();
+    expect(within(cols[1] as HTMLElement).getByRole('heading', { name: 'Data' })).toBeInTheDocument();
+    expect(within(cols[1] as HTMLElement).getByText('Running')).toBeInTheDocument();
+  });
+
+  it('offers five accents, graphite included, and saves the chosen one', async () => {
+    const f = setup();
+    const group = await screen.findByRole('radiogroup', { name: 'Accent' });
+    expect(within(group).getAllByRole('radio').map((r) => r.getAttribute('aria-label'))).toEqual(['Blue', 'Graphite', 'Amber', 'Teal', 'Orchid']);
+    await userEvent.click(within(group).getByRole('radio', { name: 'Orchid' }));
+    await waitFor(() => expect(patches(f)).toContainEqual({ accent: '#B66AD0' }));
+  });
+
+  it('time zone is a text input that saves on blur', async () => {
+    const f = setup();
+    const input = await screen.findByRole('textbox', { name: 'Time zone' });
+    expect(input).toHaveValue('Asia/Jerusalem');
+    await userEvent.clear(input);
+    await userEvent.type(input, 'Europe/Berlin');
+    await userEvent.tab();
+    await waitFor(() => expect(patches(f)).toContainEqual({ time_zone: 'Europe/Berlin' }));
+  });
+
+  it('uses the design copy for Home options', async () => {
+    setup();
+    expect(await screen.findByRole('radiogroup', { name: 'Rescheduled' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Show weekends on timelines' })).toBeInTheDocument();
+    expect(screen.queryByText('Rescheduled window')).toBeNull();
+  });
+
+  it('shows the endpoint in a mono field with Copy, and the backup summary', async () => {
+    setup();
+    const endpoint = await screen.findByText('http://127.0.0.1:4747/mcp');
+    expect(within(endpoint.closest('.gp-set__mono') as HTMLElement).getByRole('button', { name: 'Copy' })).toBeInTheDocument();
+    expect(await screen.findByText(/Daily · last 30 kept · backed up 3 h ago/)).toBeInTheDocument();
   });
 });
