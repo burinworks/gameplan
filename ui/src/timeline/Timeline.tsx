@@ -1,19 +1,26 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { useHighlight } from '../api/live';
 import {
-  DAY_W,
+  BAR_H,
   HEADER_H,
+  HOME_GROUP_H,
   LABEL_GAP,
+  PROJECT_BAR_H,
+  PROJECT_GROUP_H,
+  PROJECT_ROW_PITCH,
   ROW_PITCH,
   assignLanes,
   barExtent,
   barGeom,
   dayIndex,
+  dayTicks,
+  dayWidth,
   labelFits,
   todayX,
   weekTicks,
   weekendCols,
+  type TimelineVariant,
   type Zoom,
 } from '../lib/timeline';
 import { Arrows, type ArrowPos } from './Arrows';
@@ -57,6 +64,10 @@ export interface TLGroup {
   id: string;
   label: string;
   collapsed: boolean;
+  /** Text at the right of the group row, e.g. a milestone's due date. */
+  due?: string;
+  /** A diamond drawn on the group row at this date (a milestone's due date). */
+  mark?: { id: string; date: string; color: string; risk: boolean };
 }
 
 export interface TimelineProps {
@@ -74,7 +85,14 @@ export interface TimelineProps {
   /** Reject to snap the bar back; the message comes from the shared error line, not the timeline. */
   onReschedule?: (barId: string, dates: Dates) => Promise<unknown> | void;
   onLink?: (fromId: string, toId: string) => void;
+  /** `home` (default) is the all-projects overview; `project` is the single-project layout. */
+  variant?: TimelineVariant;
+  /** Overrides the variant's label column width. */
   labelWidth?: number;
+  /** Bar id whose row is highlighted and whose bar gets the selection ring. */
+  selectedId?: string;
+  /** Empty-state content laid over the grid (the grid still runs the full height). */
+  empty?: ReactNode;
   /** Scroll Today to about 25% from the left on first render. */
   initialScrollToToday?: boolean;
 }
@@ -83,11 +101,11 @@ export interface TimelineHandle {
   scrollToToday: () => void;
 }
 
-const GROUP_H = 30;
 const LINK_GAP = LABEL_GAP;
+const LABEL_W: Record<TimelineVariant, number> = { home: 170, project: 236 };
 
 type Item =
-  | { kind: 'group'; id: string; label: string; collapsed: boolean; y: number; h: number }
+  | { kind: 'group'; group: TLGroup; y: number; h: number }
   | { kind: 'row'; row: TLRow; y: number; h: number; lanes: number };
 
 interface Override extends Dates {
@@ -104,6 +122,7 @@ function BarView({
   lane,
   dragging,
   linkTarget,
+  selected,
   canLink,
   onPointerDown,
   onKeyDown,
@@ -120,6 +139,7 @@ function BarView({
   lane: number;
   dragging: boolean;
   linkTarget: boolean;
+  selected: boolean;
   canLink: boolean;
   onPointerDown: (e: React.PointerEvent<HTMLElement>) => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => void;
@@ -138,6 +158,7 @@ function BarView({
     dragging && 'is-dragging',
     changed && 'is-changed',
     linkTarget && 'is-link-target',
+    selected && 'is-selected',
     clippedStart && 'is-clipped-start',
     clippedEnd && 'is-clipped-end',
   ]
@@ -199,7 +220,7 @@ function BarView({
 function Chevron({ open }: { open: boolean }) {
   return (
     <span className={open ? 'tl-chev is-open' : 'tl-chev'} aria-hidden="true">
-      <Icon name="chevron" size={14} />
+      <Icon name="chevron" size={12} />
     </span>
   );
 }
@@ -219,12 +240,18 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
     onOpen,
     onReschedule,
     onLink,
-    labelWidth = 170,
+    variant = 'home',
+    labelWidth = LABEL_W[variant],
+    selectedId,
+    empty,
     initialScrollToToday = false,
   },
   ref,
 ) {
-  const dayW = DAY_W[zoom];
+  const dayW = dayWidth(zoom, variant);
+  const pitch = variant === 'project' ? PROJECT_ROW_PITCH : ROW_PITCH;
+  const barH = variant === 'project' ? PROJECT_BAR_H : BAR_H;
+  const groupH = variant === 'project' ? PROJECT_GROUP_H : HOME_GROUP_H;
   const last = dayIndex(from, to);
   const totalW = (last + 1) * dayW;
   const scroller = useRef<HTMLDivElement>(null);
@@ -308,15 +335,7 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
     const out: Item[] = [];
     const laneOf = new Map<string, number>();
     let y = 0;
-    let prev: string | undefined;
-    for (const row of rows) {
-      const g = row.group ? groupById.get(row.group) : undefined;
-      if (g && row.group !== prev) {
-        out.push({ kind: 'group', id: g.id, label: g.label, collapsed: g.collapsed, y, h: GROUP_H });
-        y += GROUP_H;
-      }
-      prev = row.group;
-      if (g?.collapsed) continue;
+    const emitRow = (row: TLRow) => {
       // Lanes come from the saved dates so a bar being dragged does not change lines mid-drag.
       const placed = row.bars.flatMap((b) => {
         const g = barGeom(b.start, b.end, from, to, dayW);
@@ -324,26 +343,46 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
       });
       const { lanes, count } = assignLanes(placed);
       placed.forEach((p, i) => laneOf.set(p.id, lanes[i] ?? 0));
-      out.push({ kind: 'row', row, y, h: count * ROW_PITCH, lanes: count });
-      y += count * ROW_PITCH;
+      out.push({ kind: 'row', row, y, h: count * pitch, lanes: count });
+      y += count * pitch;
+    };
+    // Rows without a (known) group come first, then each group's header followed by its rows.
+    for (const row of rows) if (!row.group || !groupById.has(row.group)) emitRow(row);
+    for (const g of groups) {
+      out.push({ kind: 'group', group: g, y, h: groupH });
+      y += groupH;
+      if (g.collapsed) continue;
+      for (const row of rows) if (row.group === g.id) emitRow(row);
     }
     return { items: out, bodyH: y, laneOf };
-  }, [rows, groupById, from, to, dayW]);
+  }, [rows, groups, groupById, from, to, dayW, pitch, groupH]);
 
   const pos = useMemo(() => {
     const m = new Map<string, ArrowPos>();
     for (const it of items) {
-      if (it.kind !== 'row') continue;
+      if (it.kind === 'group') {
+        const mk = it.group.mark;
+        const i = mk ? dayIndex(from, mk.date) : -1;
+        if (mk && i >= 0 && i <= dayIndex(from, to)) m.set(mk.id, { x: i * dayW + dayW / 2, w: 0, y: it.y + it.h / 2 });
+        continue;
+      }
       for (const b of it.row.bars) {
         const e = effective(b);
         const g = barGeom(e.start, e.end, from, to, dayW);
-        if (g) m.set(b.id, { x: g.x, w: g.w, y: it.y + (laneOf.get(b.id) ?? 0) * ROW_PITCH + ROW_PITCH / 2 });
+        if (g) m.set(b.id, { x: g.x, w: g.w, y: it.y + (laneOf.get(b.id) ?? 0) * pitch + pitch / 2 });
       }
     }
     return m;
-  }, [items, laneOf, effective, from, to, dayW]);
+  }, [items, laneOf, effective, from, to, dayW, pitch]);
 
-  const ticks = useMemo(() => weekTicks(from, to, dayW, weekStart, today), [from, to, dayW, weekStart, today]);
+  const ticks = useMemo(
+    () => (zoom === 'day' ? dayTicks(from, to, dayW, weekStart, today) : weekTicks(from, to, dayW, weekStart, today)),
+    [zoom, from, to, dayW, weekStart, today],
+  );
+  const selectedRow = useMemo(() => {
+    if (!selectedId) return undefined;
+    return rows.find((r) => r.bars.some((b) => b.id === selectedId))?.id;
+  }, [rows, selectedId]);
   const weekends = useMemo(() => (showWeekends ? weekendCols(from, to, dayW) : []), [showWeekends, from, to, dayW]);
   const tIdx = dayIndex(from, today);
   const showToday = tIdx >= 0 && tIdx <= last;
@@ -362,106 +401,144 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
   }, []);
 
   const canLinkAny = !!onLink;
+  const style = {
+    '--tl-label-w': `${labelWidth}px`,
+    '--tl-head': `${HEADER_H}px`,
+    '--tl-pitch': `${pitch}px`,
+    '--tl-bar-h': `${barH}px`,
+  } as CSSProperties;
 
   return (
-    <div className="tl" style={{ '--tl-label-w': `${labelWidth}px` } as CSSProperties}>
+    <div className={`tl tl--${variant}`} style={style}>
       <div className="tl-main">
-        <div className="tl-labels" style={{ width: labelWidth }}>
-          <div className="tl-labels-head" style={{ height: HEADER_H }} />
-          {items.map((it) =>
-            it.kind === 'group' ? (
-              <button
-                key={`g:${it.id}`}
-                type="button"
-                className="tl-group"
-                style={{ height: it.h }}
-                aria-expanded={!it.collapsed}
-                aria-label={it.label}
-                onClick={() => onToggleGroup?.(it.id)}
-              >
-                <Chevron open={!it.collapsed} />
-                <span className="tl-group-label" dir="auto" title={it.label}>
-                  {it.label}
-                </span>
-              </button>
-            ) : (
-              <div key={it.row.id} className="tl-rowlabel" style={{ height: it.h }}>
-                {it.row.swatch && <span className="tl-swatch" style={{ background: it.row.swatch }} aria-hidden="true" />}
-                <span className="tl-rowtext">
-                  <span className="tl-rowtitle" data-row-label dir="auto" title={it.row.label}>
-                    {it.row.label}
-                  </span>
-                  {it.row.meta && <span className="tl-rowmeta">{it.row.meta}</span>}
-                </span>
-                {it.row.dot === 'risk' && <span className="tl-dot" role="img" aria-label="At risk" />}
-              </div>
-            ),
-          )}
-        </div>
-
-        <div className="tl-scroll" ref={scroller} data-timeline-scroll>
-          <div
-            className={drag.link ? 'tl-canvas is-linking' : 'tl-canvas'}
-            ref={plane}
-            style={{ width: totalW, height: HEADER_H + bodyH }}
-          >
-            {weekends.map((c) => (
-              <span key={c.x} className="tl-weekend" style={{ left: c.x, width: c.w }} />
-            ))}
-            {ticks.map((t) => (
-              <span key={t.x} className="tl-tick" style={{ left: t.x }}>
-                <span className="tl-tick-label">{t.label}</span>
-              </span>
-            ))}
-            {showToday && (
-              <>
-                <span className="tl-today-line" style={{ left: tx }} aria-hidden="true" />
-                <span className="tl-today-label" style={{ left: tx }}>
-                  Today
-                </span>
-              </>
-            )}
+        <div className="tl-body">
+          <div className="tl-labels" style={{ width: labelWidth }}>
+            <div className="tl-labels-head" style={{ height: HEADER_H }} />
             {items.map((it) =>
               it.kind === 'group' ? (
-                <div key={`g:${it.id}`} className="tl-trackrow is-group" style={{ top: HEADER_H + it.y, height: it.h }} />
+                <button
+                  key={`g:${it.group.id}`}
+                  type="button"
+                  className="tl-group"
+                  style={{ height: it.h }}
+                  aria-expanded={!it.group.collapsed}
+                  aria-label={it.group.label}
+                  onClick={() => onToggleGroup?.(it.group.id)}
+                >
+                  <Chevron open={!it.group.collapsed} />
+                  <span className="tl-group-label" dir="auto" title={it.group.label}>
+                    {it.group.label}
+                  </span>
+                  {it.group.due && <span className="tl-rowmeta tl-group-due">{it.group.due}</span>}
+                </button>
               ) : (
-                <div key={it.row.id} className="tl-trackrow" style={{ top: HEADER_H + it.y, height: it.h }}>
-                  {it.row.bars.flatMap((b) => {
-                    const e = effective(b);
-                    const g = barGeom(e.start, e.end, from, to, dayW);
-                    return g ? [{ b, g }] : [];
-                  }).map(({ b, g }) => {
-                    const draggable = b.draggable && !!onReschedule;
-                    const shown: TLBar = { ...b, ...effective(b) };
-                    return (
-                      <BarView
-                        key={b.id}
-                        bar={{ ...shown, draggable }}
-                        x={g.x}
-                        w={g.w}
-                        clippedStart={g.clippedStart}
-                        clippedEnd={g.clippedEnd}
-                        trackW={totalW}
-                        lane={laneOf.get(b.id) ?? 0}
-                        dragging={drag.dragId === b.id}
-                        linkTarget={drag.link?.target === b.id && drag.link.fromId !== b.id}
-                        canLink={canLinkAny && b.kind !== 'draft'}
-                        onPointerDown={(ev) => drag.barPointerDown(ev, b.id, g.w)}
-                        onKeyDown={(ev) => drag.barKeyDown(ev, b.id)}
-                        onClick={() => drag.barClick(b.id)}
-                        onHandleDown={(ev) => drag.handlePointerDown(ev, b.id)}
-                      />
-                    );
-                  })}
+                <div key={it.row.id} className={it.row.id === selectedRow ? 'tl-rowlabel is-selected' : 'tl-rowlabel'} style={{ height: it.h }}>
+                  {it.row.swatch && <span className="tl-swatch" style={{ background: it.row.swatch }} aria-hidden="true" />}
+                  {variant === 'project' ? (
+                    <>
+                      <span className="tl-rowtitle" data-row-label dir="auto" title={it.row.label}>
+                        {it.row.label}
+                      </span>
+                      {it.row.dot === 'risk' && <span className="tl-dot" role="img" aria-label="At risk" />}
+                      {it.row.meta && <span className="tl-rowmeta">{it.row.meta}</span>}
+                    </>
+                  ) : (
+                    <>
+                      <span className="tl-rowtext">
+                        <span className="tl-rowtitle" data-row-label dir="auto" title={it.row.label}>
+                          {it.row.label}
+                        </span>
+                        {it.row.meta && <span className="tl-rowmeta">{it.row.meta}</span>}
+                      </span>
+                      {it.row.dot === 'risk' && <span className="tl-dot" role="img" aria-label="At risk" />}
+                    </>
+                  )}
                 </div>
               ),
             )}
-            <div className="tl-overlay" style={{ top: HEADER_H, height: bodyH }}>
-              <Arrows links={links} pos={pos} width={totalW} height={bodyH} pending={drag.link} />
+          </div>
+
+          <div className="tl-scroll" ref={scroller} data-timeline-scroll>
+            <div
+              className={drag.link ? 'tl-canvas is-linking' : 'tl-canvas'}
+              ref={plane}
+              style={{ width: totalW, minHeight: HEADER_H + bodyH }}
+            >
+              {weekends.map((c) => (
+                <span key={c.x} className="tl-weekend" style={{ left: c.x, width: c.w }} />
+              ))}
+              {ticks.map((t) => (
+                <span key={t.x} className="tl-tick" style={{ left: t.x }}>
+                  <span className="tl-tick-label">{t.label}</span>
+                </span>
+              ))}
+              {showToday && (
+                <>
+                  <span className="tl-today-line" style={{ left: tx }} aria-hidden="true" />
+                  <span className="tl-today-label" style={{ left: tx }}>
+                    Today
+                  </span>
+                </>
+              )}
+              {items.map((it) => {
+                if (it.kind === 'group') {
+                  const mk = it.group.mark;
+                  const i = mk ? dayIndex(from, mk.date) : -1;
+                  return (
+                    <div key={`g:${it.group.id}`} className="tl-trackrow is-group" style={{ top: HEADER_H + it.y, height: it.h }}>
+                      {mk && i >= 0 && i <= last && (
+                        <span
+                          className={mk.risk ? 'tl-gdiamond is-risk' : 'tl-gdiamond'}
+                          data-milestone={mk.id}
+                          role="img"
+                          aria-label={`${it.group.label} due`}
+                          style={{ left: i * dayW + dayW / 2, '--bar-color': mk.color } as CSSProperties}
+                        />
+                      )}
+                    </div>
+                  );
+                }
+                return (
+                  <div key={it.row.id} className="tl-trackrow" style={{ top: HEADER_H + it.y, height: it.h }}>
+                    {it.row.bars.flatMap((b) => {
+                      const e = effective(b);
+                      const g = barGeom(e.start, e.end, from, to, dayW);
+                      return g ? [{ b, g }] : [];
+                    }).map(({ b, g }) => {
+                      const draggable = b.draggable && !!onReschedule;
+                      const shown: TLBar = { ...b, ...effective(b) };
+                      return (
+                        <BarView
+                          key={b.id}
+                          bar={{ ...shown, draggable }}
+                          x={g.x}
+                          w={g.w}
+                          clippedStart={g.clippedStart}
+                          clippedEnd={g.clippedEnd}
+                          trackW={totalW}
+                          lane={laneOf.get(b.id) ?? 0}
+                          dragging={drag.dragId === b.id}
+                          linkTarget={drag.link?.target === b.id && drag.link.fromId !== b.id}
+                          selected={selectedId === b.id}
+                          canLink={canLinkAny && b.kind !== 'draft'}
+                          onPointerDown={(ev) => drag.barPointerDown(ev, b.id, g.w)}
+                          onKeyDown={(ev) => drag.barKeyDown(ev, b.id)}
+                          onClick={() => drag.barClick(b.id)}
+                          onHandleDown={(ev) => drag.handlePointerDown(ev, b.id)}
+                        />
+                      );
+                    })}
+                  </div>
+                );
+              })}
+              <div className="tl-overlay" style={{ top: HEADER_H, height: bodyH }}>
+                <Arrows links={links} pos={pos} width={totalW} height={bodyH} pitch={pitch} pending={drag.link} />
+              </div>
             </div>
           </div>
         </div>
       </div>
+      {empty}
     </div>
   );
 });

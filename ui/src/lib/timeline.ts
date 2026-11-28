@@ -1,10 +1,18 @@
 // Pure timeline geometry. All dates are YYYY-MM-DD; day math is UTC.
 
-export type Zoom = 'week' | 'month';
+export type Zoom = 'day' | 'week' | 'month';
+/** `home` is the all-projects overview; `project` is the single-project timeline with its wider label column. */
+export type TimelineVariant = 'home' | 'project';
 
-export const DAY_W: Record<Zoom, number> = { week: 16, month: 6 };
+export const DAY_W: Record<Zoom, number> = { day: 40, week: 16, month: 6 };
+/** The project timeline runs a little tighter than Home at week zoom. */
+export const PROJECT_DAY_W: Record<Zoom, number> = { day: 40, week: 13, month: 6 };
 export const ROW_PITCH = 46;
+export const PROJECT_ROW_PITCH = 40;
 export const BAR_H = 26;
+export const PROJECT_BAR_H = 24;
+export const PROJECT_GROUP_H = 38;
+export const HOME_GROUP_H = 30;
 export const BAR_GAP = 8;
 export const HEADER_H = 40;
 
@@ -56,13 +64,28 @@ export function todayX(from: string, today: string, dayW: number): number {
   return dayIndex(from, today) * dayW + dayW / 2;
 }
 
+export function dayWidth(zoom: Zoom, variant: TimelineVariant = 'home'): number {
+  return (variant === 'project' ? PROJECT_DAY_W : DAY_W)[zoom];
+}
+
+/** First day of the week that contains `d`. */
+export function weekStartOf(d: string, weekStart: 'mon' | 'sun'): string {
+  const startDow = weekStart === 'mon' ? 1 : 0;
+  const back = (weekday(d) - startDow + 7) % 7;
+  return addDays(d, -back);
+}
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-// Matches fmtDate: "Nov 16", with ", 2027" appended when the year differs from today's.
+const YEAR_SHOWN_AFTER_DAYS = 92;
+
+// "Nov 16". The year is added only when it differs from today's and the date is more than about three
+// months from today, so "Jan 4" stays short while a label a year out reads "Jan 4, 2028".
 function monthDay(d: string, today: string): string {
   const [y = 0, m = 1, day = 1] = d.split('-').map(Number);
   const base = `${MONTHS[m - 1]} ${day}`;
-  return y === Number(today.slice(0, 4)) ? base : `${base}, ${y}`;
+  const far = Math.abs(dayIndex(today, d)) > YEAR_SHOWN_AFTER_DAYS;
+  return y !== Number(today.slice(0, 4)) && far ? `${base}, ${y}` : base;
 }
 
 function weekday(d: string): number {
@@ -86,6 +109,25 @@ export function weekTicks(
   return out;
 }
 
+/** Day zoom: a tick every day. A week start reads "Nov 16"; the other days read just the day of the month. */
+export function dayTicks(
+  from: string,
+  to: string,
+  dayW: number,
+  weekStart: 'mon' | 'sun',
+  today: string,
+): { x: number; label: string }[] {
+  const startDow = weekStart === 'mon' ? 1 : 0;
+  const last = dayIndex(from, to);
+  const out: { x: number; label: string }[] = [];
+  for (let i = 0; i <= last; i++) {
+    const d = addDays(from, i);
+    const label = weekday(d) === startDow || i === 0 ? monthDay(d, today) : String(Number(d.slice(8)));
+    out.push({ x: i * dayW, label });
+  }
+  return out;
+}
+
 export function weekendCols(from: string, to: string, dayW: number): { x: number; w: number }[] {
   const last = dayIndex(from, to);
   const out: { x: number; w: number }[] = [];
@@ -101,12 +143,12 @@ export function weekendCols(from: string, to: string, dayW: number): { x: number
   return out;
 }
 
-export function arrowPath(a: { x2: number; y: number }, b: { x1: number; y: number }): string {
+export function arrowPath(a: { x2: number; y: number }, b: { x1: number; y: number }, pitch: number = ROW_PITCH): string {
   if (b.x1 - a.x2 >= 16) {
     const mid = a.x2 + 8;
     return `M${a.x2} ${a.y} H${mid} V${b.y} H${b.x1 - 2}`;
   }
-  const midY = a.y === b.y ? a.y + ROW_PITCH / 2 : (a.y + b.y) / 2;
+  const midY = a.y === b.y ? a.y + pitch / 2 : (a.y + b.y) / 2;
   return `M${a.x2} ${a.y} H${a.x2 + 8} V${midY} H${b.x1 - 10} V${b.y} H${b.x1 - 2}`;
 }
 

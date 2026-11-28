@@ -125,6 +125,42 @@ describe('Timeline tab', () => {
   });
 });
 
+describe('Timeline tab layout', () => {
+  it('carries the milestone on its group row: due date, diamond, no separate Milestone row', async () => {
+    setup();
+    await waitFor(() => expect(document.querySelector('.tl-group')).not.toBeNull());
+    const group = document.querySelector('.tl-group') as HTMLElement;
+    expect(group.querySelector('.tl-group-due')).not.toBeNull();
+    expect(document.querySelector('[data-milestone="m1"]')).not.toBeNull();
+    expect([...document.querySelectorAll('[data-row-label]')].map((e) => e.textContent)).not.toContain('Milestone');
+  });
+
+  it('marks the open task row and bar as selected', async () => {
+    setup('/p/ship/timeline', 'task=t-spec');
+    await waitFor(() => expect(document.querySelector(`[data-bar="${tasks.spec.id}"]`)).toHaveClass('is-selected'));
+    expect(document.querySelectorAll('.tl-rowlabel.is-selected')).toHaveLength(1);
+  });
+
+  it('with no tasks it keeps the grid and offers Add a task', async () => {
+    const empty = { ...projectTree, milestones: [] };
+    mockFetch({ '/api/projects/ship': empty, '/api/settings': settings });
+    const loc = memoryLocation({ path: '/p/ship/timeline', record: true });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <Router hook={loc.hook} searchHook={loc.searchHook}>
+          <TimelineTab slug="ship" />
+        </Router>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText('No tasks yet')).toBeInTheDocument();
+    expect(document.querySelectorAll('.tl-tick').length).toBeGreaterThan(3);
+    expect(document.querySelector('.tl-today-line')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Add a task' }));
+    expect(last(loc.history)).toBe('/p/ship/timeline?new=task');
+  });
+});
+
 describe('List tab', () => {
   it('shows a Review pill with the review tone, AI chip and group headings', async () => {
     setup('/p/ship/list');

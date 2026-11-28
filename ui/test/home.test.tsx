@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { Router } from 'wouter';
 import { memoryLocation } from 'wouter/memory-location';
 import { describe, expect, it } from 'vitest';
+import { AppActionsContext } from '../src/app/appActions';
 import { Home } from '../src/screens/home/Home';
 import { PlanPicker } from '../src/screens/home/PlanPicker';
 import { homeFixture, timelineFixture } from './fixtures/home';
@@ -69,6 +70,60 @@ describe('Home', () => {
     await screen.findByRole('region', { name: 'Needs review' });
     expect(screen.queryByRole('region', { name: 'Rescheduled' })).toBeNull();
     expect(container.textContent).not.toMatch(/Create a|here or ask|!/);
+  });
+});
+
+describe('Home empty states', () => {
+  const empty = { ...homeFixture, plan: [], pickUp: [], alsoToday: [], doneThisWeek: { count: 0, items: [] } };
+  const none = (home: unknown = empty) => ({ ...routes(home), '/api/timeline': [] });
+
+  it('with no projects the timeline grid still shows week lines and Today, with one CTA over it', async () => {
+    mockFetch(none());
+    const { container } = wrap(<Home />);
+    expect(await screen.findByText('No projects yet')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create your first project' })).toBeInTheDocument();
+    expect(container.querySelectorAll('.tl-tick').length).toBeGreaterThan(3);
+    expect(container.querySelector('.tl-today-line')).not.toBeNull();
+    expect(container.querySelector('.tl-weekend')).not.toBeNull();
+    // the canvas is sized to the container, not to the (empty) rows
+    expect((container.querySelector('.tl-canvas') as HTMLElement).style.minHeight).toBe('40px');
+  });
+
+  it('the CTA opens the New project action', async () => {
+    mockFetch(none());
+    let opened = 0;
+    wrap(
+      <AppActionsContext.Provider value={{ openNewProject: () => opened++, openSearch: () => {} }}>
+        <Home />
+      </AppActionsContext.Provider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Create your first project' }));
+    expect(opened).toBe(1);
+  });
+
+  it('shows no empty overlay when there are projects', async () => {
+    mockFetch(routes());
+    wrap(<Home />);
+    await screen.findByRole('region', { name: 'My plan' });
+    expect(screen.queryByText('No projects yet')).toBeNull();
+  });
+
+  it('an empty plan offers Plan my day; an empty week says so', async () => {
+    mockFetch(none());
+    wrap(<Home />);
+    const plan = await screen.findByRole('region', { name: 'My plan' });
+    expect(within(plan).getByText('Nothing planned for today')).toBeInTheDocument();
+    fireEvent.click(within(plan).getByRole('button', { name: 'Plan my day' }));
+    expect(await screen.findByRole('button', { name: 'Plan' })).toBeInTheDocument();
+    expect(screen.getByText('Nothing finished yet this week')).toBeInTheDocument();
+  });
+
+  it('starts the timeline on a week boundary a week before this one', async () => {
+    const f = mockFetch(routes());
+    wrap(<Home />);
+    await screen.findByRole('region', { name: 'My plan' });
+    const url = f.mock.calls.map(([u]) => String(u)).find((u) => u.includes('/api/timeline?'))!;
+    expect(url).toContain('from=2026-11-16');
   });
 });
 
