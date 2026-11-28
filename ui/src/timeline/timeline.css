@@ -589,7 +589,7 @@
   flex-direction: column;
   align-items: center;
   gap: var(--gp-s4);
-  padding: var(--gp-s20) var(--gp-s24) var(--gp-s24);
+  padding: var(--gp-s24) var(--gp-s24) var(--gp-s20);
   border-radius: var(--gp-r12);
   background: var(--gp-card);
   box-shadow: var(--gp-hairline), var(--gp-shadow-pill);
@@ -613,7 +613,7 @@
 .tl-empty-choices {
   display: flex;
   gap: var(--gp-s12);
-  margin-top: var(--gp-s14);
+  margin-bottom: var(--gp-s14);
 }
 .tl-empty-choice {
   min-width: calc(var(--gp-s32) * 3.5);

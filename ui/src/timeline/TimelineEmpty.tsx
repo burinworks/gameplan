@@ -43,8 +43,6 @@ export function TimelineEmpty({ title, hint, choices }: { title: string; hint?: 
   return (
     <div className="tl-empty" data-timeline-empty>
       <div className="tl-empty-card" role="group" aria-label={title}>
-        <p className="tl-empty-title">{title}</p>
-        {hint && <p className="tl-empty-hint">{hint}</p>}
         <div className="tl-empty-choices">
           {choices.map((c) => (
             <button key={c.label} type="button" className="tl-empty-choice" onClick={c.onClick}>
@@ -53,6 +51,8 @@ export function TimelineEmpty({ title, hint, choices }: { title: string; hint?: 
             </button>
           ))}
         </div>
+        <p className="tl-empty-title">{title}</p>
+        {hint && <p className="tl-empty-hint">{hint}</p>}
       </div>
     </div>
   );
