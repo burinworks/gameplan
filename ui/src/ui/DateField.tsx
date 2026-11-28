@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { today as todayLocal } from '../app/today';
 import { fmtDayDate } from '../lib/format';
@@ -7,7 +7,9 @@ import { Icon } from './Icon';
 /**
  * Date input with a real calendar. Value is YYYY-MM-DD ('' only when not `required`).
  * Shows "Fri, Dec 4" (year added when it differs from today's), −/+ buttons step one day, and clicking the
- * value opens a month calendar (popover, or always visible with `inlineCalendar`).
+ * value opens a month calendar (popover, or always visible with `inlineCalendar`). The popover lives in a fixed layer on
+ * document.body: it is never clipped by a scrolling pane, stays inside the window (flips above the field when there is
+ * no room below, slides left at the right edge) and follows the field when an ancestor scrolls.
  * Props:
  *  - value, onChange(value: string)
  *  - label: aria-label of the group (required), e.g. "Due"
@@ -128,6 +130,37 @@ export function DateField({ value, onChange, label, required, min, weekStart = '
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const btn = useRef<HTMLButtonElement>(null);
   const pop = useRef<HTMLDivElement>(null);
+
+  // Place the popover under the field, inside the window: flip above when there is no room below, keep the right
+  // edge on screen. Runs again when an ancestor (the pane) scrolls or the window resizes.
+  const place = () => {
+    const b = btn.current;
+    if (!b) return;
+    const r = b.getBoundingClientRect();
+    const el = pop.current;
+    const w = el?.offsetWidth ?? 0;
+    const h = el?.offsetHeight ?? 0;
+    const gap = 6;
+    const edge = 8;
+    const below = r.bottom + gap;
+    const top = h && below + h > window.innerHeight - edge && r.top - gap - h >= edge ? r.top - gap - h : below;
+    const right = r.left + Math.max(w, r.width);
+    const left = Math.max(edge, right > window.innerWidth - edge ? window.innerWidth - edge - Math.max(w, r.width) : r.left);
+    setPos((p) => (p && p.top === top && p.left === left ? p : { top, left }));
+  };
+  useLayoutEffect(() => {
+    if (open) place();
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!open) return;
+    const again = () => place();
+    window.addEventListener('scroll', again, true);
+    window.addEventListener('resize', again);
+    return () => {
+      window.removeEventListener('scroll', again, true);
+      window.removeEventListener('resize', again);
+    };
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!open) return;

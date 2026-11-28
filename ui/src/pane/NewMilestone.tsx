@@ -3,6 +3,7 @@ import { useCreateMilestone, useProject, useSettings } from '../api/hooks';
 import { today } from '../app/today';
 import { Button, DateField, Segmented } from '../ui';
 import { addDays } from './dates';
+import { Row, TitleField } from './Details';
 import { setDraftMilestone } from './draftBar';
 import { useCloseTask } from './Pane';
 import './task-pane.css';
@@ -70,14 +71,12 @@ export function NewMilestone({ slug }: { slug: string }) {
         <h2 className="gp-tp__h2">New milestone</h2>
         <Button variant="icon" icon="close" label="Close" onClick={close} />
       </header>
-      <input
-        className="gp-tp__title-input"
-        dir="auto"
-        aria-label="Name"
+      <TitleField
+        label="Name"
         placeholder="Milestone name"
         value={name}
         autoFocus
-        onChange={(e) => setName(e.target.value)}
+        onChange={setName}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
@@ -85,11 +84,11 @@ export function NewMilestone({ slug }: { slug: string }) {
           }
         }}
       />
-      <section className="gp-tp__grid gp-tp__grid--due" aria-label="Details">
-        <span className="gp-tp__key">Due</span>
-        <DateField label="Due" value={due} onChange={setPicked} required inlineCalendar weekStart={settings.data?.week_start === 'sun' ? 'sun' : 'mon'} />
-        <span className="gp-tp__key">Status</span>
-        <div className="gp-tp__val">
+      <section className="gp-tp__grid" aria-label="Details">
+        <Row label="Due">
+          <DateField label="Due" value={due} onChange={setPicked} required weekStart={settings.data?.week_start === 'sun' ? 'sun' : 'mon'} />
+        </Row>
+        <Row label="Status">
           <Segmented
             label="Status"
             options={[
@@ -99,9 +98,10 @@ export function NewMilestone({ slug }: { slug: string }) {
             value={status}
             onChange={setStatus}
           />
-        </div>
-        <span className="gp-tp__key is-top">Goal</span>
-        <textarea className="gp-pane__input gp-tp__goal" dir="auto" aria-label="Goal" rows={3} value={goal} onChange={(e) => setGoal(e.target.value)} />
+        </Row>
+        <Row label="Goal" top>
+          <textarea className="gp-pane__input gp-tp__goal" dir="auto" aria-label="Goal" placeholder="What does done look like?" rows={3} value={goal} onChange={(e) => setGoal(e.target.value)} />
+        </Row>
       </section>
       <footer className="gp-tp__foot gp-tp__foot--form">
         <Button variant="secondary" label="Cancel" onClick={close} />

@@ -35,6 +35,8 @@ export const treeTask = (over: Partial<TreeTask> = {}): TreeTask =>
     deliverables: [],
     deliverableCount: 0,
     resume: null,
+    log: [],
+    milestoneColor: '#6E7CF5',
     ...over,
   }) as TreeTask;
 
@@ -66,8 +68,9 @@ export const projectTree = (): ProjectTree =>
         id: 'm1',
         name: 'Beta',
         due: '2026-12-01',
+        color: '#6E7CF5',
         tasks: [treeTask(), treeTask({ id: 't2', title: 'Write tests' })],
       },
-      { id: 'm2', name: 'Launch', due: null, tasks: [] },
+      { id: 'm2', name: 'Launch', due: null, color: '#D9892B', tasks: [] },
     ],
   }) as unknown as ProjectTree;
