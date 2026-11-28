@@ -28,8 +28,8 @@ describe('export', () => {
     const { store, db } = setup();
     store.createProject(YOU, { name: 'P' });
     const j = exportJson(db) as { schemaVersion: number; tables: Record<string, unknown[]> };
-    expect(j.schemaVersion).toBe(2);
-    expect(Object.keys(j.tables).sort()).toEqual(['agent_clients', 'areas', 'attachments', 'day_plan_items', 'dependencies', 'events', 'inbox_items', 'milestones', 'projects', 'settings', 'tasks', 'todos']);
+    expect(j.schemaVersion).toBe(3);
+    expect(Object.keys(j.tables).sort()).toEqual(['agent_clients', 'areas', 'attachments', 'day_plan_items', 'dependencies', 'events', 'inbox_items', 'milestones', 'projects', 'settings', 'task_log', 'tasks', 'todos']);
     expect(j.tables.projects!.length).toBe(1);
   });
 });

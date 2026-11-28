@@ -27,6 +27,8 @@ function snapshot(store: Store, ev: EventRow): Record<string, unknown> | null {
         return { ...store.attachment(ev.entityId, { archived: true }) };
       case 'inbox':
         return { ...store.inboxItem(ev.entityId) };
+      case 'log':
+        return { ...store.logEntry(ev.entityId, { deleted: true }) };
       default:
         return null;
     }
@@ -74,12 +76,20 @@ function undo(store: Store, c: WCtx, ev: EventRow): void {
       expectAfter(store, ev, ['status']);
       store.patchTask(c, ev.entityId, { status: 'review' });
       return;
-    case 'resume_noted': {
-      const snap = expectAfter(store, ev, []);
-      if (!same(snap.resumeNote, after.note)) stale(ev, '(resume note)');
-      store.applyResumeNote(c, ev.entityId, (before.note as string | null) ?? null, { at: (before.at as string | null) ?? null, by: (before.by as string | null) ?? null });
+    case 'resume_noted':
+      throw new GameplanError('invalid', 'resume notes are now execution-log entries; this older change cannot be reverted');
+    case 'log_added':
+      expectAfter(store, ev, ['text', 'actor', 'editedAt', 'deletedAt']);
+      store.applyLog(ev.entityId, { deletedAt: store.clock.now() });
       return;
-    }
+    case 'log_edited':
+      expectAfter(store, ev, ['text', 'editedAt', 'deletedAt']);
+      store.applyLog(ev.entityId, { text: before.text as string, editedAt: (before.editedAt as string | null) ?? null });
+      return;
+    case 'log_deleted':
+      expectAfter(store, ev, ['deletedAt']);
+      store.applyLog(ev.entityId, { deletedAt: null });
+      return;
     case 'day_planned': {
       const cur = store.dayPlan(ev.entityId).map((x) => ({ taskId: x.taskId, when: x.when }));
       if (!same(cur, after.items)) stale(ev, '(plan)');

@@ -5,10 +5,20 @@ import { expectCode, setup, YOU } from './helpers.js';
 
 describe('templates', () => {
   it('lists the three built-ins with counts', () => {
-    expect(listTemplates()).toEqual([
+    expect(listTemplates().map(({ id, name, milestones, tasks }) => ({ id, name, milestones, tasks }))).toEqual([
       { id: 'report', name: 'Report', milestones: 3, tasks: 9 },
       { id: 'launch', name: 'Launch', milestones: 4, tasks: 14 },
       { id: 'research', name: 'Research', milestones: 3, tasks: 8 },
+    ]);
+  });
+
+  it('lists each template areas and milestone offsets for previews', () => {
+    const report = listTemplates()[0]!;
+    expect(report.areas).toEqual(['Research', 'Data', 'Writing', 'Design']);
+    expect(report.milestoneOffsets).toEqual([
+      { name: 'Outline', offsetDays: 4 },
+      { name: 'Draft', offsetDays: 11 },
+      { name: 'Final', offsetDays: 32 },
     ]);
   });
 

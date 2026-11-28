@@ -1,0 +1,110 @@
+.up {
+  padding: var(--gp-s8) var(--gp-s24) var(--gp-s24);
+}
+.up-feed {
+  max-width: 47.5rem;
+}
+.up-day__title {
+  margin: var(--gp-s18) 0 var(--gp-s6);
+  font-size: var(--gp-fs-meta);
+  line-height: var(--gp-lh-meta);
+  font-weight: var(--gp-fw-semibold);
+  color: var(--gp-text2);
+}
+.up-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.up-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--gp-s12);
+  padding: var(--gp-s10) 0;
+  border-bottom: 1px solid var(--gp-grid);
+}
+.up-avatar {
+  flex: none;
+  width: calc(var(--gp-s24) + var(--gp-s2));
+  height: calc(var(--gp-s24) + var(--gp-s2));
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--gp-accent);
+  color: var(--gp-onAccent);
+  font-size: var(--gp-fs-micro);
+  line-height: var(--gp-lh-micro);
+  font-weight: var(--gp-fw-semibold);
+}
+.up-avatar.is-you {
+  background: var(--gp-sel);
+  color: var(--gp-text);
+}
+.up-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gp-s4);
+}
+.up-line {
+  font-size: var(--gp-fs-body);
+  line-height: var(--gp-lh-body);
+  min-width: 0;
+  color: var(--gp-text);
+}
+.up-actor {
+  font-weight: var(--gp-fw-semibold);
+}
+.up-verb {
+  color: var(--gp-text2);
+}
+.up-target {
+  font-weight: var(--gp-fw-medium);
+}
+.up-detail {
+  display: flex;
+  align-items: center;
+  gap: var(--gp-s8);
+  font-size: var(--gp-fs-small);
+  line-height: var(--gp-lh-small);
+  font-variant-numeric: tabular-nums;
+  color: var(--gp-text2);
+}
+.up-detail .gp-icon {
+  flex: none;
+}
+.up-detail.is-mono {
+  font-family: var(--gp-mono);
+}
+.up-note {
+  padding-left: var(--gp-s10);
+  border-left: 2px solid var(--gp-track);
+  font-size: var(--gp-fs-small);
+  line-height: var(--gp-lh-small);
+  color: var(--gp-text2);
+}
+.up-risk {
+  color: var(--gp-risk);
+}
+.up-trail {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gp-s10);
+}
+.up-time {
+  font-size: var(--gp-fs-meta);
+  line-height: var(--gp-lh-meta);
+  color: var(--gp-text3);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.up-revert {
+  opacity: 0;
+  transition: opacity var(--gp-fast);
+}
+.up-row:hover .up-revert,
+.up-row:focus-within .up-revert {
+  opacity: 1;
+}

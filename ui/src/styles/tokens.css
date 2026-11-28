@@ -1,0 +1,212 @@
+/* Design tokens. Light values on :root, dark overrides on [data-theme="dark"]. */
+:root {
+  color-scheme: light;
+
+  /* surfaces */
+  --gp-wall: #c9d0d6;
+  --gp-blobA: rgba(150, 170, 230, 0.75);
+  --gp-blobB: rgba(150, 205, 190, 0.7);
+  --gp-win: rgba(242, 242, 245, 0.58);
+  --gp-card: rgba(255, 255, 255, 0.92);
+  --gp-panel: rgba(0, 0, 0, 0.025);
+  --gp-panelSolid: #f8f8f9;
+  --gp-aside: rgba(0, 0, 0, 0.018);
+  --gp-sheet: rgba(255, 255, 255, 0.96);
+  --gp-menu: rgba(248, 248, 250, 0.8);
+  --gp-bar: rgba(246, 246, 248, 0.6);
+  --gp-scrim: rgba(20, 20, 30, 0.18);
+  --gp-pill: #ffffff;
+  --gp-input: #ffffff;
+
+  /* lines, tints, text */
+  --gp-edge: rgba(0, 0, 0, 0.1);
+  --gp-grid: rgba(0, 0, 0, 0.06);
+  --gp-field: rgba(0, 0, 0, 0.12);
+  --gp-sel: rgba(0, 0, 0, 0.06);
+  --gp-rowSel: rgba(0, 0, 0, 0.04);
+  --gp-weekend: rgba(0, 0, 0, 0.02);
+  --gp-track: rgba(0, 0, 0, 0.09);
+  --gp-arrow: rgba(0, 0, 0, 0.35);
+  --gp-text: #1d1d1f;
+  --gp-text2: #66666b;
+  --gp-text3: #6f6f74;
+
+  /* meaning */
+  --gp-accent: #2f6bf0;
+  --gp-accentHover: #1f4fc0;
+  --gp-risk: #c8322b;
+  --gp-ok: #1f8a4c;
+  --gp-review: #7448d6;
+  --gp-onAccent: #ffffff;
+
+  /* project palette, assigned in order */
+  --gp-p1: #6e7cf5;
+  --gp-p2: #d9892b;
+  --gp-p3: #3fa796;
+  --gp-p4: #b66ad0;
+  --gp-p5: #7a8b99;
+  --gp-p6: #e0695a;
+  --gp-p7: #5a9bd5;
+  --gp-p8: #9aa04a;
+  /* bar tint and progress as a share of the project colour */
+  --gp-bar-tint: 16%;
+  --gp-bar-progress: 26%;
+
+  /* type: family */
+  --gp-font: 'Inter Variable', system-ui, -apple-system, sans-serif;
+  --gp-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  /* type: weights */
+  --gp-fw-regular: 400;
+  --gp-fw-medium: 500;
+  --gp-fw-semibold: 600;
+  /* type: sizes and line-heights */
+  --gp-fs-display: 22px;
+  --gp-lh-display: 28px;
+  --gp-fs-title: 19px;
+  --gp-lh-title: 24px;
+  --gp-fs-heading: 17px;
+  --gp-lh-heading: 22px;
+  --gp-fs-sheet: 15px;
+  --gp-lh-sheet: 20px;
+  --gp-fs-section: 13px;
+  --gp-lh-section: 18px;
+  --gp-fs-body: 13px;
+  --gp-lh-body: 18px;
+  --gp-fs-small: 12.5px;
+  --gp-lh-small: 16px;
+  --gp-fs-meta: 12px;
+  --gp-lh-meta: 16px;
+  --gp-fs-caption: 11.5px;
+  --gp-lh-caption: 15px;
+  --gp-fs-micro: 11px;
+  --gp-lh-micro: 14px;
+  --gp-fs-mono: 12px;
+  /* type: tracking */
+  --gp-tracking-display: -0.01em;
+  --gp-tracking-title: -0.01em;
+  --gp-tracking-heading: -0.01em;
+  --gp-tracking-normal: 0;
+
+  /* spacing, 2px base */
+  --gp-s2: 2px;
+  --gp-s4: 4px;
+  --gp-s6: 6px;
+  --gp-s8: 8px;
+  --gp-s10: 10px;
+  --gp-s12: 12px;
+  --gp-s14: 14px;
+  --gp-s16: 16px;
+  --gp-s18: 18px;
+  --gp-s20: 20px;
+  --gp-s22: 22px;
+  --gp-s24: 24px;
+  --gp-s28: 28px;
+  --gp-s32: 32px;
+
+  /* sizes */
+  --gp-row: 32px;
+  --gp-rowSm: 30px;
+  --gp-fieldH: 34px;
+  --gp-control: 26px;
+  --gp-chip: 22px;
+  --gp-iconBtn: 24px;
+  --gp-icon: 16px;
+  --gp-iconInline: 14px;
+  --gp-iconChip: 11px;
+  --gp-swatch: 8px;
+  --gp-diamond: 10px;
+  --gp-diamondSm: 7px;
+  --gp-dot: 6px;
+  --gp-keycap: 18px;
+  --gp-stepW: 26px;
+  --gp-dayCell: 28px;
+  --gp-sidebar: 232px;
+  --gp-paneW: 344px;
+  --gp-sheetW: 560px;
+  --gp-day: 16px;
+  --gp-rowPitch: 46px;
+
+  /* radius */
+  --gp-r2: 2px;
+  --gp-r3: 3px;
+  --gp-r5: 5px;
+  --gp-r6: 6px;
+  --gp-r7: 7px;
+  --gp-r8: 8px;
+  --gp-r9: 9px;
+  --gp-r10: 10px;
+  --gp-r12: 12px;
+  --gp-r16: 16px;
+
+  /* shadows and edges */
+  --gp-hairline: 0 0 0 0.5px var(--gp-edge);
+  --gp-shadow-window: var(--gp-hairline), 0 30px 80px rgba(0, 0, 0, 0.28);
+  --gp-shadow-sheet: var(--gp-hairline), 0 24px 64px rgba(0, 0, 0, 0.24);
+  --gp-shadow-pill: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --gp-shadow-knob: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --gp-fieldRing: inset 0 0 0 1px var(--gp-field);
+  --gp-riskRing: 0 0 0 1.5px var(--gp-risk);
+  /* Drawn inside the element so scroll containers and overflow:hidden never clip it. */
+  --gp-focus: inset 0 0 0 2px color-mix(in srgb, var(--gp-accent) 55%, transparent);
+  --gp-diamondHalo: 0 0 0 2px var(--gp-panelSolid);
+
+  /* blur */
+  --gp-blur-win: blur(40px) saturate(1.6);
+  --gp-blur-sheet: blur(30px);
+  --gp-blur-menu: blur(30px);
+  --gp-blur-bar: blur(30px);
+  --gp-blur-blob: 90px;
+
+  /* motion */
+  --gp-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --gp-fast: 160ms var(--gp-ease);
+  --gp-pane: 220ms var(--gp-ease);
+  --gp-highlight: 1200ms ease-out;
+  --gp-undo: 6s;
+
+  /* z-index */
+  --gp-z-base: 0;
+  --gp-z-timeline: 10;
+  --gp-z-pane: 20;
+  --gp-z-menu: 40;
+  --gp-z-sheet: 50;
+  --gp-z-tooltip: 60;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --gp-wall: #1b1d22;
+  --gp-blobA: rgba(84, 96, 160, 0.55);
+  --gp-blobB: rgba(60, 120, 110, 0.45);
+  --gp-win: rgba(38, 38, 42, 0.55);
+  --gp-card: rgba(24, 24, 27, 0.92);
+  --gp-panel: rgba(255, 255, 255, 0.035);
+  --gp-panelSolid: #1e1e21;
+  --gp-aside: rgba(255, 255, 255, 0.025);
+  --gp-sheet: rgba(36, 36, 40, 0.94);
+  --gp-menu: rgba(40, 40, 44, 0.78);
+  --gp-bar: rgba(30, 30, 34, 0.6);
+  --gp-scrim: rgba(0, 0, 0, 0.35);
+  --gp-pill: #3a3a3f;
+  --gp-input: rgba(255, 255, 255, 0.06);
+
+  --gp-edge: rgba(255, 255, 255, 0.1);
+  --gp-grid: rgba(255, 255, 255, 0.07);
+  --gp-field: rgba(255, 255, 255, 0.14);
+  --gp-sel: rgba(255, 255, 255, 0.08);
+  --gp-rowSel: rgba(255, 255, 255, 0.05);
+  --gp-weekend: rgba(255, 255, 255, 0.025);
+  --gp-track: rgba(255, 255, 255, 0.12);
+  --gp-arrow: rgba(255, 255, 255, 0.38);
+  --gp-text: #f2f2f4;
+  --gp-text2: #a8a8ae;
+  --gp-text3: #9a9aa0;
+
+  --gp-risk: #ff7a70;
+  --gp-ok: #5fc48a;
+  --gp-review: #b79cff;
+
+  --gp-bar-tint: 22%;
+  --gp-bar-progress: 34%;
+}

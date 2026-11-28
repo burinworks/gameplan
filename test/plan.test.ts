@@ -45,7 +45,7 @@ describe('planMilestone', () => {
     const n = events(store).length;
     expectCode(
       () => planMilestone(store, AI, msId, { tasks: [{ key: 'a', title: 'A', dependsOn: ['b'] }, { key: 'b', title: 'B', dependsOn: ['a'] }] }),
-      'conflict',
+      'invalid',
       /cycle: (A → B → A|B → A → B)/,
     );
     expect(count('tasks')).toBe(0);

@@ -14,7 +14,7 @@ export type Executor = (typeof EXECUTOR)[number];
 export type AttachmentRole = (typeof ATTACHMENT_ROLE)[number];
 export type AttachmentKind = (typeof ATTACHMENT_KIND)[number];
 
-export type EntityType = 'project' | 'area' | 'milestone' | 'task' | 'todo' | 'dependency' | 'attachment' | 'settings' | 'day_plan' | 'inbox';
+export type EntityType = 'project' | 'area' | 'milestone' | 'task' | 'todo' | 'dependency' | 'attachment' | 'settings' | 'day_plan' | 'inbox' | 'log';
 export type ArchivableEntity = 'project' | 'milestone' | 'task' | 'todo';
 export type ReorderEntity = 'milestone' | 'task' | 'todo' | 'area' | 'project';
 
@@ -37,6 +37,9 @@ export type EventKind =
   | 'review_accepted'
   | 'review_sent_back'
   | 'resume_noted'
+  | 'log_added'
+  | 'log_edited'
+  | 'log_deleted'
   | 'day_planned'
   | 'captured'
   | 'triaged'
@@ -93,6 +96,8 @@ export interface Milestone {
   due: string | null;
   status: MilestoneStatus;
   description: string | null;
+  /** Hex colour from the milestone palette. */
+  color: string | null;
   ord: number;
   archivedAt: string | null;
   createdAt: string;
@@ -118,6 +123,17 @@ export interface Task {
   resumeNote: string | null;
   resumeAt: string | null;
   resumeBy: string | null;
+}
+
+/** One execution-log entry on a task. */
+export interface LogEntry {
+  id: string;
+  taskId: string;
+  text: string;
+  actor: string;
+  createdAt: string;
+  editedAt: string | null;
+  deletedAt: string | null;
 }
 
 export interface DayPlanItem {
@@ -253,6 +269,7 @@ export const toMilestone = (r: Row): Milestone => ({
   due: s(r.due),
   status: r.status as MilestoneStatus,
   description: s(r.description),
+  color: s(r.color),
   ord: Number(r.ord),
   archivedAt: s(r.archived_at),
   createdAt: String(r.created_at),
@@ -278,6 +295,16 @@ export const toTask = (r: Row): Task => ({
   resumeNote: s(r.resume_note),
   resumeAt: s(r.resume_at),
   resumeBy: s(r.resume_by),
+});
+
+export const toLogEntry = (r: Row): LogEntry => ({
+  id: String(r.id),
+  taskId: String(r.task_id),
+  text: String(r.text),
+  actor: String(r.actor),
+  createdAt: String(r.created_at),
+  editedAt: s(r.edited_at),
+  deletedAt: s(r.deleted_at),
 });
 
 export const toDayPlanItem = (r: Row): DayPlanItem => ({ date: String(r.date), taskId: String(r.task_id), ord: Number(r.ord), when: s(r.when_text) });

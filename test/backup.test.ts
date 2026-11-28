@@ -41,13 +41,13 @@ describe('backups', () => {
     expect(lastBackup(d)!.file).toBe('gameplan-2026-11-01.json');
   });
 
-  it('lastBackup is null for an empty dir; snapshot has all 12 tables', () => {
+  it('lastBackup is null for an empty dir; snapshot has all 13 tables', () => {
     const { db, clock } = setup();
     const d = dir();
     expect(lastBackup(d)).toBeNull();
     expect(lastBackup(join(d, 'missing'))).toBeNull();
     const f = snapshot(db, d, clock);
-    expect(Object.keys(JSON.parse(readFileSync(f, 'utf8')).tables).length).toBe(12);
+    expect(Object.keys(JSON.parse(readFileSync(f, 'utf8')).tables).length).toBe(13);
     expect(lastBackup(d)).toEqual(expect.objectContaining({ file: 'gameplan-2026-11-26.json' }));
   });
 });

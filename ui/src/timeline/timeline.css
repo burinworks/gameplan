@@ -1,0 +1,700 @@
+.tl {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  font-family: var(--gp-font);
+  font-variant-numeric: tabular-nums;
+  --tl-pitch: var(--gp-rowPitch);
+  --tl-bar-h: var(--gp-control);
+}
+
+/* the grid runs the full container height; taller content scrolls vertically with its labels */
+.tl-main {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.tl-body {
+  display: flex;
+  min-height: 100%;
+  min-width: 0;
+}
+
+/* label column: fixed, rows line up with the track rows */
+.tl-labels {
+  flex: none;
+  box-sizing: border-box;
+  border-right: 1px solid var(--gp-grid);
+}
+
+/* corner above the label column: the month at the left edge of the view, on the date-strip baseline */
+.tl-labels-head {
+  position: relative;
+  box-sizing: border-box;
+}
+.tl-labels-head::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--tl-strip) - 1px);
+  border-bottom: 1px solid var(--gp-grid);
+}
+.tl-corner {
+  position: absolute;
+  top: calc((var(--tl-strip) - var(--gp-lh-micro)) / 2);
+  font-size: var(--gp-fs-micro);
+  line-height: var(--gp-lh-micro);
+  font-weight: var(--gp-fw-semibold);
+  color: var(--gp-text2);
+  white-space: nowrap;
+}
+.tl--home .tl-corner {
+  left: var(--gp-s18);
+}
+.tl--project .tl-corner {
+  left: var(--gp-s12);
+}
+
+.tl-rowlabel,
+.tl-group {
+  display: flex;
+  align-items: center;
+  gap: var(--gp-s8);
+  box-sizing: border-box;
+  padding: 0 var(--gp-s10) 0 0;
+  min-width: 0;
+}
+
+/* Home: label column with an 18px left inset */
+.tl--home .tl-rowlabel {
+  gap: var(--gp-s10);
+  padding: 0 var(--gp-s10) 0 var(--gp-s18);
+}
+/* Project: group rows 12px in, task rows 32px in, one line each */
+.tl--project .tl-group {
+  padding: 0 var(--gp-s14) 0 var(--gp-s12);
+}
+.tl--project .tl-rowlabel {
+  padding: 0 var(--gp-s14) 0 var(--gp-s32);
+}
+.tl-rowlabel.is-selected {
+  background: var(--gp-rowSel);
+}
+
+.tl-rowtext {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.tl-rowtitle,
+.tl-group-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--gp-fs-body);
+  line-height: var(--gp-lh-body);
+  font-weight: var(--gp-fw-medium);
+  color: var(--gp-text);
+}
+.tl--project .tl-rowtitle {
+  flex: 1;
+  min-width: 0;
+  font-weight: var(--gp-fw-regular);
+}
+
+.tl-rowmeta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--gp-fs-meta);
+  line-height: var(--gp-lh-meta);
+  color: var(--gp-text2);
+}
+.tl--project .tl-rowmeta {
+  flex: none;
+  font-size: var(--gp-fs-caption);
+  line-height: var(--gp-lh-caption);
+  color: var(--gp-text3);
+}
+
+.tl-swatch {
+  flex: none;
+  width: var(--gp-swatch);
+  height: var(--gp-swatch);
+  border-radius: var(--gp-r3);
+}
+
+.tl-dot {
+  flex: none;
+  width: var(--gp-dot);
+  height: var(--gp-dot);
+  border-radius: 50%;
+  background: var(--gp-risk);
+}
+
+.tl-group {
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  color: var(--gp-text);
+  transition: background var(--gp-fast);
+}
+.tl-group:hover {
+  background: var(--gp-sel);
+}
+.tl-group:focus-visible,
+.tl-bar:focus-visible {
+  outline: none;
+  box-shadow: var(--gp-focus);
+}
+.tl-group-label {
+  flex: 1;
+  min-width: 0;
+  text-align: start;
+  font-weight: var(--gp-fw-semibold);
+}
+.tl-group-due {
+  flex: none;
+  font-size: var(--gp-fs-caption);
+  color: var(--gp-text3);
+}
+
+.tl-chev {
+  flex: none;
+  display: inline-flex;
+  color: var(--gp-text3);
+  transition: transform var(--gp-fast);
+}
+.tl-chev.is-open {
+  transform: rotate(90deg);
+}
+
+/* scroller: the only thing that scrolls horizontally */
+.tl-scroll {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.tl-canvas {
+  position: relative;
+  height: 100%;
+}
+.tl-canvas.is-linking,
+.tl-canvas.is-linking * {
+  cursor: crosshair;
+}
+
+.tl-weekend {
+  position: absolute;
+  top: var(--tl-strip);
+  bottom: 0;
+  background: var(--gp-weekend);
+}
+
+.tl-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--gp-grid);
+}
+.tl-tick-label {
+  position: absolute;
+  top: calc((var(--tl-strip) - var(--gp-lh-micro)) / 2);
+  left: var(--gp-s6);
+  font-size: var(--gp-fs-micro);
+  line-height: var(--gp-lh-micro);
+  font-weight: var(--gp-fw-medium);
+  color: var(--gp-text3);
+  white-space: nowrap;
+}
+
+/* hairline under the date strip */
+.tl-strip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--tl-strip);
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--gp-grid);
+  pointer-events: none;
+}
+
+/* day zoom: each date centred in its own column */
+.tl--day .tl-tick-label {
+  left: 0;
+  width: var(--tl-day);
+  text-align: center;
+}
+.tl-tick.is-month .tl-tick-label {
+  font-weight: var(--gp-fw-semibold);
+  color: var(--gp-text2);
+}
+.tl-tick.is-today .tl-tick-label {
+  color: var(--gp-accent);
+  font-weight: var(--gp-fw-semibold);
+}
+
+/* month zoom: week sub-lines, fainter than the month lines and kept out of the date strip */
+.tl-minor {
+  position: absolute;
+  top: var(--tl-strip);
+  bottom: 0;
+  border-left: 1px solid color-mix(in srgb, var(--gp-grid) 50%, transparent);
+}
+
+/* Today: a line on the left edge of today's column, the word in accent just under the date strip */
+.tl-today-line {
+  position: absolute;
+  top: var(--tl-strip);
+  bottom: 0;
+  width: calc(var(--gp-s2) * 0.75);
+  background: var(--gp-accent);
+  z-index: var(--gp-z-timeline);
+  pointer-events: none;
+}
+.tl-today-label {
+  position: absolute;
+  top: var(--tl-strip);
+  height: calc(var(--tl-head) - var(--tl-strip));
+  margin-left: var(--gp-s6);
+  display: flex;
+  align-items: center;
+  font-size: var(--gp-fs-micro);
+  line-height: var(--gp-lh-micro);
+  font-weight: var(--gp-fw-semibold);
+  color: var(--gp-accent);
+  white-space: nowrap;
+  z-index: var(--gp-z-timeline);
+  pointer-events: none;
+}
+
+.tl-trackrow {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+
+/* risk lines run under bars and labels; text always reads on top of them */
+.tl-underlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+}
+
+/* text on the track sits above the Today line and dependency arrows */
+.tl-bar-label,
+.tl-pct,
+.tl-label-out,
+.tl-gname {
+  z-index: calc(var(--gp-z-timeline) + 1);
+}
+/* free-standing text gets a soft halo in the surface colour so grid and risk lines stop short of the glyphs */
+.tl-label-out,
+.tl-gname,
+.tl-today-label {
+  text-shadow:
+    0 0 var(--gp-s2) var(--gp-panelSolid),
+    0 0 var(--gp-s4) var(--gp-panelSolid);
+}
+
+.tl-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: var(--gp-z-timeline);
+  pointer-events: none;
+}
+.tl-arrows {
+  display: block;
+  overflow: visible;
+}
+
+/* bars */
+.tl-bar {
+  --tint: var(--gp-bar-tint);
+  --prog: var(--gp-bar-progress);
+  position: absolute;
+  top: calc(var(--lane, 0) * var(--tl-pitch) + (var(--tl-pitch) - var(--tl-bar-h)) / 2);
+  height: var(--tl-bar-h);
+  box-sizing: border-box;
+  border-radius: var(--gp-r7);
+  background: color-mix(in srgb, var(--bar-color) var(--tint), transparent);
+  display: flex;
+  align-items: center;
+  overflow: visible;
+  user-select: none;
+  touch-action: none;
+  cursor: default;
+  transition: box-shadow var(--gp-fast);
+}
+.tl-bar.is-task {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bar-color) 22%, transparent);
+}
+.tl-bar.is-draggable {
+  cursor: grab;
+}
+.tl-bar.is-dragging {
+  cursor: grabbing;
+  z-index: 1;
+}
+.tl-bar.is-draft {
+  background: none;
+  outline: 1px dashed var(--bar-color);
+  outline-offset: -1px;
+}
+.tl-bar.is-risk {
+  box-shadow: var(--gp-riskRing);
+}
+.tl-bar.is-risk:focus-visible {
+  box-shadow: var(--gp-riskRing), var(--gp-focus);
+}
+.tl-bar.is-selected {
+  box-shadow: 0 0 0 var(--gp-s2) var(--gp-accent);
+}
+.tl-bar.is-selected.is-risk {
+  box-shadow: 0 0 0 var(--gp-s2) var(--gp-accent), var(--gp-riskRing);
+}
+.tl-bar.is-link-target {
+  box-shadow: var(--gp-focus);
+}
+.tl-bar.is-clipped-start {
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+}
+.tl-bar.is-clipped-end {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+.tl-bar.is-changed {
+  animation: tl-highlight var(--gp-highlight);
+}
+@keyframes tl-highlight {
+  from {
+    box-shadow: var(--gp-focus);
+  }
+  to {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.tl-progress {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--bar-color) var(--prog), transparent);
+  pointer-events: none;
+}
+
+.tl-bar-label {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0 var(--gp-s8) 0 var(--gp-s8);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--gp-fs-meta);
+  line-height: var(--gp-lh-meta);
+  font-weight: var(--gp-fw-medium);
+  color: var(--gp-text);
+  pointer-events: none;
+}
+
+.tl-bar-label + .tl-pct {
+  margin-left: 0;
+}
+.tl-bar-label {
+  flex: 1;
+}
+/* "40%" inside a task bar, at its right end (before the area strip) */
+.tl-pct {
+  position: relative;
+  flex: none;
+  margin-left: auto;
+  padding: 0 var(--gp-s8) 0 var(--gp-s4);
+  font-size: var(--gp-fs-micro);
+  line-height: var(--gp-lh-micro);
+  font-weight: var(--gp-fw-semibold);
+  color: color-mix(in srgb, var(--gp-text) 62%, var(--bar-color));
+  pointer-events: none;
+}
+.tl-bar.has-area .tl-pct {
+  padding-right: var(--gp-s12);
+}
+/* area colour strip at the bar's end */
+.tl-area {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: var(--gp-s4);
+  border-start-end-radius: inherit;
+  border-end-end-radius: inherit;
+  pointer-events: none;
+}
+
+.tl-label-out {
+  position: absolute;
+  top: calc(var(--lane, 0) * var(--tl-pitch) + (var(--tl-pitch) - var(--gp-lh-meta)) / 2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--gp-fs-meta);
+  line-height: var(--gp-lh-meta);
+  font-weight: var(--gp-fw-medium);
+  color: var(--gp-text2);
+  pointer-events: none;
+}
+
+.tl-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  cursor: ew-resize;
+}
+.tl-edge-l {
+  left: 0;
+}
+.tl-edge-r {
+  right: 0;
+}
+
+.tl-diamond {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  width: var(--gp-diamond);
+  height: var(--gp-diamond);
+  margin: calc(var(--gp-diamond) / -2) calc(var(--gp-diamond) / -2) 0 0;
+  border-radius: var(--gp-r2);
+  background: var(--bar-color);
+  box-shadow: var(--gp-diamondHalo);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+/* milestone diamond on a group row */
+.tl-gdiamond {
+  position: absolute;
+  top: 50%;
+  width: var(--gp-iconChip);
+  height: var(--gp-iconChip);
+  margin: calc(var(--gp-iconChip) / -2) 0 0 calc(var(--gp-iconChip) / -2);
+  border-radius: var(--gp-r2);
+  background: var(--bar-color);
+  transform: rotate(45deg);
+}
+.tl-gdiamond.is-risk {
+  box-shadow: var(--gp-riskRing);
+}
+/* the milestone's name beside its diamond */
+.tl-gname {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--gp-fs-meta);
+  line-height: var(--gp-lh-meta);
+  font-weight: var(--gp-fw-medium);
+  color: var(--gp-text2);
+  pointer-events: none;
+}
+/* milestone colour in the label column: a small rhombus, like the diamond on the track */
+.tl-gswatch {
+  flex: none;
+  width: var(--gp-diamondSm);
+  height: var(--gp-diamondSm);
+  margin: 0 var(--gp-s2);
+  border-radius: calc(var(--gp-r2) * 0.75);
+  transform: rotate(45deg);
+}
+
+/* host for a timeline that fills its container (Home panel, project tab body) */
+.tl-host {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  min-height: calc(var(--gp-rowPitch) * 6);
+  padding: 0;
+}
+
+.tl-handle {
+  position: absolute;
+  top: calc(var(--lane, 0) * var(--tl-pitch) + (var(--tl-pitch) - var(--gp-s8)) / 2);
+  width: var(--gp-s8);
+  height: var(--gp-s8);
+  border-radius: 50%;
+  background: var(--gp-accent);
+  box-shadow: var(--gp-diamondHalo);
+  opacity: 0;
+  cursor: crosshair;
+  touch-action: none;
+  transition: opacity var(--gp-fast);
+}
+.tl-bar:hover + .tl-handle,
+.tl-bar:focus-visible + .tl-handle,
+.tl-handle:hover,
+.tl-canvas.is-linking .tl-handle {
+  opacity: 1;
+}
+/* hovering the outside label gap should not hide the handle */
+.tl-bar:hover + .tl-label-out + .tl-handle {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tl-empty-choice,
+  .tl-bar,
+  .tl-handle,
+  .tl-chev,
+  .tl-group {
+    transition: none;
+  }
+}
+
+/* empty timeline: a card over the grid with square choices */
+.tl-empty {
+  position: absolute;
+  inset: 0;
+  z-index: var(--gp-z-timeline);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--gp-s24) var(--gp-s16);
+  pointer-events: none;
+}
+.tl-empty-card {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--gp-s4);
+  padding: var(--gp-s24) var(--gp-s24) var(--gp-s20);
+  border-radius: var(--gp-r12);
+  background: var(--gp-card);
+  box-shadow: var(--gp-hairline), var(--gp-shadow-pill);
+  text-align: center;
+}
+.tl-empty-title,
+.tl-empty-hint {
+  margin: 0;
+}
+.tl-empty-title {
+  font-size: var(--gp-fs-section);
+  line-height: var(--gp-lh-section);
+  font-weight: var(--gp-fw-semibold);
+  color: var(--gp-text);
+}
+.tl-empty-hint {
+  font-size: var(--gp-fs-meta);
+  line-height: var(--gp-lh-meta);
+  color: var(--gp-text2);
+}
+.tl-empty-choices {
+  display: flex;
+  gap: var(--gp-s12);
+  margin-bottom: var(--gp-s14);
+}
+.tl-empty-choice {
+  min-width: calc(var(--gp-s32) * 3.5);
+  height: calc(var(--gp-s32) * 3);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gp-s12);
+  padding: var(--gp-s12) var(--gp-s18);
+  border: 0;
+  border-radius: var(--gp-r10);
+  background: var(--gp-panel);
+  box-shadow: inset 0 0 0 1px var(--gp-edge);
+  color: var(--gp-text);
+  font: inherit;
+  cursor: pointer;
+  transition: background var(--gp-fast), box-shadow var(--gp-fast);
+}
+.tl-empty-choice:hover {
+  background: var(--gp-sel);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gp-accent) 45%, transparent);
+}
+.tl-empty-choice:focus-visible {
+  outline: none;
+  box-shadow: var(--gp-focus);
+}
+.tl-empty-label {
+  font-size: var(--gp-fs-body);
+  line-height: var(--gp-lh-body);
+  font-weight: var(--gp-fw-medium);
+}
+.tl-empty-vis {
+  height: var(--gp-s24);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tl-empty-sausage {
+  position: relative;
+  width: calc(var(--gp-s32) * 1.75);
+  height: var(--gp-s14);
+  border-radius: var(--gp-r7);
+  background: color-mix(in srgb, var(--gp-accent) var(--gp-bar-tint), transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gp-accent) 22%, transparent);
+  overflow: hidden;
+}
+.tl-empty-sausage-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  background: color-mix(in srgb, var(--gp-accent) var(--gp-bar-progress), transparent);
+}
+.tl-empty-rhombus {
+  width: var(--gp-s14);
+  height: var(--gp-s14);
+  border-radius: var(--gp-r3);
+  background: var(--gp-accent);
+  transform: rotate(45deg);
+}
+.tl-empty-vis--rows {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--gp-s4);
+}
+.tl-empty-mini {
+  height: var(--gp-s6);
+  border-radius: var(--gp-r3);
+}
+.tl-empty-mini--a {
+  width: calc(var(--gp-s32) * 1.25);
+  background: color-mix(in srgb, var(--gp-p1) 55%, transparent);
+}
+.tl-empty-mini--b {
+  width: calc(var(--gp-s32) * 0.9);
+  margin-left: var(--gp-s12);
+  background: color-mix(in srgb, var(--gp-p2) 55%, transparent);
+}
+.tl-empty-mini--c {
+  width: calc(var(--gp-s32) * 1.5);
+  margin-left: var(--gp-s6);
+  background: color-mix(in srgb, var(--gp-p3) 55%, transparent);
+}

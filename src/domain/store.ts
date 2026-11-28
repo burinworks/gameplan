@@ -20,6 +20,7 @@ import {
   toDependency,
   toEvent,
   toInboxItem,
+  toLogEntry,
   toMilestone,
   toProject,
   toTask,
@@ -37,6 +38,7 @@ import {
   type Executor,
   type InboxItem,
   type LinkInput,
+  type LogEntry,
   type Milestone,
   type MilestoneStatus,
   type Priority,
@@ -86,6 +88,8 @@ export interface MilestoneInput {
   due?: string | null;
   status?: MilestoneStatus;
   description?: string | null;
+  /** `#RRGGBB`. Omitted on create → the next unused palette colour in the project. */
+  color?: string;
 }
 
 export type CreateTaskInput = TaskInput & { todos?: TodoInput[]; after?: string[]; links?: LinkInput[] };
@@ -120,7 +124,7 @@ export type TaskFields = Partial<{
   milestoneId: string;
 }>;
 
-export type MilestoneFields = Partial<{ name: string; due: string | null; status: MilestoneStatus; description: string | null }>;
+export type MilestoneFields = Partial<{ name: string; due: string | null; status: MilestoneStatus; description: string | null; color: string }>;
 
 export type ProjectFields = Partial<{
   name: string;
@@ -133,6 +137,9 @@ export type ProjectFields = Partial<{
   defaultExecutor: Executor;
   labels: string[];
 }>;
+
+/** Milestone colours, handed out in order within a project. */
+export const MILESTONE_PALETTE = ['#6E7CF5', '#D9892B', '#3FA796', '#B66AD0', '#7A8B99', '#E07A5F', '#4E9BD6', '#9AA24A'];
 
 const PALETTE = ['#2F6BF0', '#E5484D', '#30A46C', '#F76B15', '#8E4EC6', '#12A594', '#D6409F', '#FFB224'];
 
@@ -149,7 +156,7 @@ const TASK_COLS: Record<keyof TaskFields, string> = {
   labels: 'labels_json',
   milestoneId: 'milestone_id',
 };
-const MILESTONE_COLS: Record<keyof MilestoneFields, string> = { name: 'name', due: 'due', status: 'status', description: 'description' };
+const MILESTONE_COLS: Record<keyof MilestoneFields, string> = { name: 'name', due: 'due', status: 'status', description: 'description', color: 'color' };
 const PROJECT_COLS: Record<keyof ProjectFields, string> = {
   name: 'name',
   color: 'color',
@@ -190,6 +197,20 @@ function optDate(name: string, v: unknown): string | null {
 function labelsOf(v: unknown): string[] {
   if (!Array.isArray(v) || v.some((x) => typeof x !== 'string')) throw new GameplanError('invalid', 'labels must be an array of strings');
   return [...new Set((v as string[]).map((x) => x.trim()).filter(Boolean))];
+}
+
+function hexColor(v: unknown): string {
+  if (typeof v !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(v)) throw new GameplanError('invalid', `color must be a hex colour like #6E7CF5 (got ${JSON.stringify(v)})`);
+  return v;
+}
+
+const LOG_MAX = 2000;
+
+export function checkLogText(raw: unknown): string {
+  if (typeof raw !== 'string' || !raw.trim()) throw new GameplanError('invalid', 'text is required');
+  const t = raw.trim();
+  if (t.length > LOG_MAX) throw new GameplanError('invalid', `a log entry is at most ${LOG_MAX} characters (got ${t.length})`);
+  return t;
 }
 
 export function checkResumeNote(note: string): void {
@@ -385,7 +406,19 @@ export class Store {
   task(id: string, opts: { archived?: boolean } = {}): Task {
     const r = this.q('SELECT * FROM tasks WHERE id = ?').get(id) as Record<string, unknown> | undefined;
     if (!r || (r.archived_at && !opts.archived)) throw new GameplanError('not_found', `task ${id} not found`);
-    return toTask(r);
+    const latest = this.logOf(id)[0];
+    return { ...toTask(r), resumeNote: latest?.text ?? null, resumeAt: latest?.createdAt ?? null, resumeBy: latest?.actor ?? null };
+  }
+
+  /** Live (not deleted) log entries of a task, newest first. */
+  logOf(taskId: string): LogEntry[] {
+    return (this.q('SELECT * FROM task_log WHERE task_id = ? AND deleted_at IS NULL ORDER BY created_at DESC, rowid DESC').all(taskId) as Record<string, unknown>[]).map(toLogEntry);
+  }
+
+  logEntry(id: string, opts: { deleted?: boolean } = {}): LogEntry {
+    const r = this.q('SELECT * FROM task_log WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+    if (!r || (r.deleted_at && !opts.deleted)) throw new GameplanError('not_found', `log entry ${id} not found`);
+    return toLogEntry(r);
   }
 
   todo(id: string, opts: { archived?: boolean } = {}): Todo {
@@ -591,7 +624,7 @@ export class Store {
     for (const a of removed) {
       const users = this.q('SELECT title FROM tasks WHERE area_id = ? AND archived_at IS NULL ORDER BY ord').all(a.id) as { title: string }[];
       if (users.length)
-        throw new GameplanError('conflict', `area "${a.name}" is used by ${users.length} task(s): ${users.map((u) => `"${u.title}"`).join(', ')} — move them first`);
+        throw new GameplanError('invalid', `area "${a.name}" is used by ${users.length} task(s): ${users.map((u) => `"${u.title}"`).join(', ')} — move them first`);
     }
     // Temporarily rename to avoid UNIQUE(project_id, name) clashes while swapping names.
     for (const a of current) this.q('UPDATE areas SET name = ? WHERE id = ?').run(`\u0000${a.id}`, a.id);
@@ -624,20 +657,29 @@ export class Store {
       const name = text('name', input.name);
       const due = optDate('due', input.due);
       const status = input.status === undefined ? 'planned' : oneOf('status', input.status, MILESTONE_STATUS);
+      const color = input.color === undefined ? this.nextMilestoneColor(p.id) : hexColor(input.color);
       const id = newId('ms');
-      this.q('INSERT INTO milestones(id, project_id, name, due, status, description, ord, created_at) VALUES (?,?,?,?,?,?,?,?)').run(
+      this.q('INSERT INTO milestones(id, project_id, name, due, status, description, color, ord, created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(
         id,
         p.id,
         name,
         due,
         status,
         input.description ?? null,
+        color,
         this.nextOrd('milestones', 'project_id', p.id),
         this.clock.now(),
       );
-      this.record(c, { entity: 'milestone', entityId: id, projectId: p.id, label: name, kind: 'created', after: { name, due, status } });
+      this.record(c, { entity: 'milestone', entityId: id, projectId: p.id, label: name, kind: 'created', after: { name, due, status, color } });
       return this.milestone(id);
     });
+  }
+
+  /** First palette colour no live milestone of the project uses; past eight, the palette wraps. */
+  private nextMilestoneColor(projectId: string): string {
+    const used = (this.q('SELECT color FROM milestones WHERE project_id = ? AND archived_at IS NULL').all(projectId) as { color: string | null }[]).map((r) => (r.color ?? '').toLowerCase());
+    const free = MILESTONE_PALETTE.find((c) => !used.includes(c.toLowerCase()));
+    return free ?? MILESTONE_PALETTE[used.length % MILESTONE_PALETTE.length]!;
   }
 
   updateMilestone(ctx: Ctx, id: string, patch: Partial<MilestoneInput>): Milestone {
@@ -648,6 +690,7 @@ export class Store {
       if (patch.due !== undefined) f.due = optDate('due', patch.due);
       if (patch.status !== undefined) f.status = oneOf('status', patch.status, MILESTONE_STATUS);
       if (patch.description !== undefined) f.description = patch.description;
+      if (patch.color !== undefined) f.color = hexColor(patch.color);
       this.patchMilestone(c, id, f);
       return this.milestone(id);
     });
@@ -710,7 +753,7 @@ export class Store {
         now,
       );
       this.record(c, { entity: 'task', entityId: id, projectId: p.id, label: title, kind: 'created', after: { title, milestoneId: m.id, start, end, status } });
-      if (input.todos?.length) this.addTodos(c, id, input.todos);
+      if (input.todos?.length) this.addTodos(c, id, input.todos, { reopen: false });
       for (const dep of input.after ?? []) this.addDependency(c, id, { taskId: dep });
       for (const l of input.links ?? []) this.attach(c, id, { role: 'context', url: l.url, title: l.title, kind: l.kind });
       return this.task(id);
@@ -824,40 +867,103 @@ export class Store {
         after: { status: next },
         reason: decision === 'send_back' ? note : (ctx.reason ?? null),
       });
-      if (decision === 'send_back' && note !== null) this.applyResumeNote(c, id, note);
+      if (decision === 'send_back' && note !== null) this.insertLog(c, id, note);
       return this.task(id);
     });
   }
 
-  // ---------- resume notes ----------
+  // ---------- execution log ----------
 
-  /** One line on where work stopped. `''`/null clears it. */
+  /** Appends an entry to the task's execution log (newest entry = what Home shows). */
+  addLogEntry(ctx: Ctx, taskId: string, textIn: string): LogEntry {
+    const text = checkLogText(textIn);
+    return this.write(ctx, (c) => this.insertLog(c, taskId, text));
+  }
+
+  /** Low-level: insert + `log_added`. */
+  insertLog(c: WCtx, taskId: string, text: string): LogEntry {
+    const t = this.task(taskId, { archived: true });
+    const id = newId('lg');
+    const at = this.clock.now();
+    this.q('INSERT INTO task_log(id, task_id, text, actor, created_at) VALUES (?,?,?,?,?)').run(id, taskId, text, c.actor, at);
+    this.record(c, {
+      entity: 'log',
+      entityId: id,
+      projectId: this.projectIdOfTask(taskId),
+      label: t.title,
+      kind: 'log_added',
+      after: { taskId, text, actor: c.actor, createdAt: at, editedAt: null, deletedAt: null },
+    });
+    return this.logEntry(id);
+  }
+
+  private assertOwnLog(c: Ctx, e: LogEntry): void {
+    if (isAgent(c.actor) && e.actor !== c.actor) throw new GameplanError('forbidden', 'An agent can only change its own log entries.');
+  }
+
+  editLogEntry(ctx: Ctx, id: string, textIn: string): LogEntry {
+    const text = checkLogText(textIn);
+    return this.write(ctx, (c) => {
+      const e = this.logEntry(id);
+      this.assertOwnLog(c, e);
+      if (e.text === text) return e;
+      const at = this.clock.now();
+      this.q('UPDATE task_log SET text = ?, edited_at = ? WHERE id = ?').run(text, at, id);
+      this.record(c, {
+        entity: 'log',
+        entityId: id,
+        projectId: this.projectIdOfTask(e.taskId),
+        label: this.task(e.taskId, { archived: true }).title,
+        kind: 'log_edited',
+        before: { text: e.text, editedAt: e.editedAt },
+        after: { text, editedAt: at },
+      });
+      return this.logEntry(id);
+    });
+  }
+
+  /** Soft delete: the row stays (for revert and history). */
+  deleteLogEntry(ctx: Ctx, id: string): void {
+    this.write(ctx, (c) => {
+      const e = this.logEntry(id);
+      this.assertOwnLog(c, e);
+      const at = this.clock.now();
+      this.q('UPDATE task_log SET deleted_at = ? WHERE id = ?').run(at, id);
+      this.record(c, {
+        entity: 'log',
+        entityId: id,
+        projectId: this.projectIdOfTask(e.taskId),
+        label: this.task(e.taskId, { archived: true }).title,
+        kind: 'log_deleted',
+        before: { deletedAt: null },
+        after: { deletedAt: at },
+      });
+    });
+  }
+
+  /** Low-level (revert): put the row back the way the event found it. */
+  applyLog(id: string, fields: { text?: string; editedAt?: string | null; deletedAt?: string | null }): void {
+    const e = this.logEntry(id, { deleted: true });
+    this.q('UPDATE task_log SET text = ?, edited_at = ?, deleted_at = ? WHERE id = ?').run(
+      fields.text ?? e.text,
+      fields.editedAt === undefined ? e.editedAt : fields.editedAt,
+      fields.deletedAt === undefined ? e.deletedAt : fields.deletedAt,
+      id,
+    );
+  }
+
+  /**
+   * Kept for the HTTP `PUT .../resume` and the MCP `set_resume_note`: appends a log entry.
+   * Empty text (or null) does nothing.
+   */
   setResumeNote(ctx: Ctx, taskId: string, note: string | null): Task {
     if (note !== null && typeof note !== 'string') throw new GameplanError('invalid', 'note must be a string');
     const n = note === null ? null : note.trim() || null;
     if (n !== null) checkResumeNote(n);
     return this.write(ctx, (c) => {
       this.task(taskId);
-      this.applyResumeNote(c, taskId, n);
+      if (n !== null) this.insertLog(c, taskId, n);
       return this.task(taskId);
-    });
-  }
-
-  /** Low-level: sets (or clears) the note, stamps at/by, records `resume_noted`. */
-  applyResumeNote(c: WCtx, taskId: string, note: string | null, stamp?: { at: string | null; by: string | null }): void {
-    const t = this.task(taskId, { archived: true });
-    if (t.resumeNote === note && !stamp) return;
-    const at = stamp ? stamp.at : note === null ? null : this.clock.now();
-    const by = stamp ? stamp.by : note === null ? null : c.actor;
-    this.q('UPDATE tasks SET resume_note = ?, resume_at = ?, resume_by = ? WHERE id = ?').run(note, at, by, taskId);
-    this.record(c, {
-      entity: 'task',
-      entityId: taskId,
-      projectId: this.projectIdOfTask(taskId),
-      label: t.title,
-      kind: 'resume_noted',
-      before: { note: t.resumeNote, at: t.resumeAt, by: t.resumeBy },
-      after: { note, at, by },
     });
   }
 
@@ -958,7 +1064,8 @@ export class Store {
 
   // ---------- to-dos ----------
 
-  addTodos(ctx: Ctx, taskId: string, items: TodoInput[]): Todo[] {
+  /** A new open to-do reopens a task that was done or in review (`reopen: false` for creation, where the status is the caller's). */
+  addTodos(ctx: Ctx, taskId: string, items: TodoInput[], opts: { reopen?: boolean } = {}): Todo[] {
     return this.write(ctx, (c) => {
       const t = this.task(taskId);
       const projectId = this.projectIdOfTask(taskId);
@@ -985,6 +1092,7 @@ export class Store {
         this.record(c, { entity: 'todo', entityId: ids[i]!, projectId, label: title, kind: 'created', after: { taskId, title, task: t.title } });
       });
       this.assertTodosAcyclic(taskId);
+      if (opts.reopen !== false && (t.status === 'done' || t.status === 'review')) this.patchTask(c, taskId, { status: 'doing' });
       return ids.map((id) => this.todo(id));
     });
   }
@@ -1064,7 +1172,7 @@ export class Store {
       if (state.get(id) === 2) return;
       if (state.get(id) === 1) {
         const cyc = [...stack.slice(stack.indexOf(id)), id].map((x) => byId.get(x)?.title ?? x);
-        throw new GameplanError('conflict', `to-do cycle: ${cyc.join(' → ')}`);
+        throw new GameplanError('invalid', `to-do cycle: ${cyc.join(' → ')}`);
       }
       state.set(id, 1);
       stack.push(id);
@@ -1142,7 +1250,7 @@ export class Store {
       if (!toTaskId && !toMilestoneId) throw new GameplanError('invalid', 'dependency target needs taskId or milestoneId');
       let toLabel: string;
       if (toTaskId) {
-        if (toTaskId === fromTaskId) throw new GameplanError('conflict', `dependency cycle: "${from.title}" cannot depend on itself`);
+        if (toTaskId === fromTaskId) throw new GameplanError('invalid', `dependency cycle: "${from.title}" cannot depend on itself`);
         toLabel = this.task(toTaskId).title;
       } else {
         toLabel = this.milestone(toMilestoneId!).name;
@@ -1152,7 +1260,7 @@ export class Store {
       ).get(fromTaskId, toTaskId, toMilestoneId) as Record<string, unknown> | undefined;
       if (dup) return toDependency(dup);
       const cycle = this.findCycle(fromTaskId, toTaskId ? `t:${toTaskId}` : `m:${toMilestoneId}`);
-      if (cycle) throw new GameplanError('conflict', `dependency cycle: ${cycle.join(' → ')}`);
+      if (cycle) throw new GameplanError('invalid', `dependency cycle: ${cycle.join(' → ')}`);
       const id = newId('dep');
       this.q('INSERT INTO dependencies(id, from_task_id, to_task_id, to_milestone_id, created_at) VALUES (?,?,?,?,?)').run(id, fromTaskId, toTaskId, toMilestoneId, this.clock.now());
       this.record(c, {

@@ -12,6 +12,7 @@ import {
   toTodo,
   toArea,
   toDayPlanItem,
+  toLogEntry,
   type Attachment,
   type DayPlanItem,
   type EventRow,
@@ -88,6 +89,14 @@ export interface LinkRef {
   bad: boolean;
 }
 
+export interface TreeLogEntry {
+  id: string;
+  text: string;
+  by: string;
+  at: string;
+  editedAt: string | null;
+}
+
 export interface TreeTask extends Task {
   area: { id: string; name: string; color: string | null } | null;
   progress: Progress;
@@ -100,6 +109,11 @@ export interface TreeTask extends Task {
   context: Attachment[];
   deliverables: Attachment[];
   deliverableCount: number;
+  /** The milestone's colour (task bars take it). */
+  milestoneColor: string | null;
+  /** Execution log, newest first. */
+  log: TreeLogEntry[];
+  /** The newest log entry. */
   resume: Resume | null;
 }
 
@@ -124,8 +138,7 @@ export interface Resume {
   by: string | null;
 }
 
-export const resumeOf = (t: { resumeNote: string | null; resumeAt: string | null; resumeBy: string | null }): Resume | null =>
-  t.resumeNote ? { note: t.resumeNote, at: t.resumeAt, by: t.resumeBy } : null;
+export const resumeOf = (log: TreeLogEntry[]): Resume | null => (log[0] ? { note: log[0].text, at: log[0].at, by: log[0].by } : null);
 
 const isOpen = (s: string): boolean => s === 'todo' || s === 'doing';
 
@@ -152,6 +165,10 @@ function buildTree(db: DatabaseSync, pr: Row, today: string): ProjectTree {
   const ph = taskIds.map(() => '?').join(',') || "''";
   const todos = (db.prepare(`SELECT * FROM todos WHERE task_id IN (${ph}) AND archived_at IS NULL ORDER BY ord, rowid`).all(...taskIds) as Row[]).map(toTodo);
   const atts = (db.prepare(`SELECT * FROM attachments WHERE task_id IN (${ph}) AND archived_at IS NULL ORDER BY at, rowid`).all(...taskIds) as Row[]).map(toAttachment);
+  const logs = (
+    db.prepare(`SELECT * FROM task_log WHERE task_id IN (${ph}) AND deleted_at IS NULL ORDER BY created_at DESC, rowid DESC`).all(...taskIds) as Row[]
+  ).map(toLogEntry);
+  const logBy = groupBy(logs, (l) => l.taskId);
   const todosBy = groupBy(todos, (t) => t.taskId);
   const attsBy = groupBy(atts, (a) => a.taskId);
   const msById = new Map(milestones.map((m) => [m.id, m]));
@@ -165,11 +182,15 @@ function buildTree(db: DatabaseSync, pr: Row, today: string): ProjectTree {
     const h = taskHealth(t, d, m, today);
     const tds = todosBy.get(t.id) ?? [];
     const states = todoStates(tds);
+    const log = (logBy.get(t.id) ?? []).map((l) => ({ id: l.id, text: l.text, by: l.actor, at: l.createdAt, editedAt: l.editedAt }));
     const area = t.areaId ? areaById.get(t.areaId) : undefined;
     const ctx = (attsBy.get(t.id) ?? []).filter((a) => a.role === 'context');
     const del = (attsBy.get(t.id) ?? []).filter((a) => a.role === 'deliverable');
     treeTasks.set(t.id, {
       ...t,
+      resumeNote: log[0]?.text ?? null,
+      resumeAt: log[0]?.at ?? null,
+      resumeBy: log[0]?.by ?? null,
       area: area ? { id: area.id, name: area.name, color: area.color } : null,
       progress: taskProgress(t.status, tds),
       health: h.health,
@@ -181,7 +202,9 @@ function buildTree(db: DatabaseSync, pr: Row, today: string): ProjectTree {
       context: ctx,
       deliverables: del,
       deliverableCount: del.length,
-      resume: resumeOf(t),
+      milestoneColor: m.color,
+      log,
+      resume: resumeOf(log),
     });
   }
 
@@ -279,7 +302,7 @@ export function listProjects(db: DatabaseSync, today: string, status: ProjectSta
       status: tree.project.status,
       progress: tree.project.progress,
       atRisk: atRiskCount(tree),
-      milestones: tree.milestones.map((m) => ({ id: m.id, name: m.name, due: m.due, status: m.status, missed: m.missed })),
+      milestones: tree.milestones.map((m) => ({ id: m.id, name: m.name, due: m.due, status: m.status, color: m.color, missed: m.missed })),
       nextMilestone: nextMilestone(tree.milestones),
     };
   });
@@ -289,6 +312,7 @@ export function overview(db: DatabaseSync, today: string) {
   const paused = (db.prepare("SELECT * FROM projects WHERE archived_at IS NULL AND status = 'paused' ORDER BY status_changed_at DESC, rowid").all() as Row[]).map((r) => {
     const tree = buildTree(db, r, today);
     return {
+      id: tree.project.id,
       slug: tree.project.slug,
       name: tree.project.name,
       color: tree.project.color,
@@ -309,6 +333,7 @@ export function overview(db: DatabaseSync, today: string) {
       )
       .all() as Row[]
   ).map((r) => ({
+    id: String(r.id),
     slug: String(r.slug),
     name: String(r.name),
     color: (r.color as string | null) ?? null,
@@ -332,6 +357,8 @@ export interface TodayTask {
   project: string;
   projectName: string;
   color: string | null;
+  /** Colour of the task's milestone. */
+  milestoneColor: string | null;
   start: string | null;
   end: string | null;
   progress: Progress;
@@ -363,7 +390,7 @@ export function home(db: DatabaseSync, today: string, settings: Settings) {
   for (const r of projects) addTree(r);
   const shown = new Set(trees.keys());
   const asToday = (t: TreeTask, p: ProjectTree['project']): TodayTask => ({
-    id: t.id, title: t.title, project: p.slug, projectName: p.name, color: p.color, start: t.start, end: t.end, progress: t.progress, executor: t.executor, status: t.status,
+    id: t.id, title: t.title, project: p.slug, projectName: p.name, color: p.color, milestoneColor: t.milestoneColor, start: t.start, end: t.end, progress: t.progress, executor: t.executor, status: t.status,
   });
   for (const tree of trees.values()) {
     const p = tree.project;
@@ -485,6 +512,7 @@ export function timeline(db: DatabaseSync, today: string, from: string, to: stri
       .map((m) => ({
         id: m.id,
         name: m.name,
+        color: m.color,
         start: m.span.start! < from ? from : m.span.start!,
         end: m.span.end! > to ? to : m.span.end!,
         due: m.due,

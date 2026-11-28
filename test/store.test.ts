@@ -38,7 +38,7 @@ describe('projects', () => {
   it('refuses to delete an area a task uses, naming the task', () => {
     const { store, p, msId } = base();
     store.createTask(YOU, msId, { title: 'Sketch screens', area: 'Design' });
-    expectCode(() => store.configureProject(YOU, 'learn-studio', { areas: [{ id: p.areas[0]!.id, name: 'AI' }] }), 'conflict', 'Sketch screens');
+    expectCode(() => store.configureProject(YOU, 'learn-studio', { areas: [{ id: p.areas[0]!.id, name: 'AI' }] }), 'invalid', 'Sketch screens');
     expect(store.db.prepare('SELECT count(*) n FROM areas').get()).toEqual({ n: 2 });
   });
 
@@ -84,7 +84,7 @@ describe('tasks', () => {
   it('rejects a to-do cycle via after; nothing written', () => {
     const { store, msId } = base();
     const n = events(store).length;
-    expectCode(() => store.createTask(YOU, msId, { title: 'Cyc', todos: [{ title: 'a', after: [1] }, { title: 'b', after: [0] }] }), 'conflict', /cycle/);
+    expectCode(() => store.createTask(YOU, msId, { title: 'Cyc', todos: [{ title: 'a', after: [1] }, { title: 'b', after: [0] }] }), 'invalid', /cycle/);
     expect(events(store).length).toBe(n);
     expect(store.db.prepare('SELECT count(*) n FROM tasks').get()).toEqual({ n: 0 });
   });
@@ -93,9 +93,9 @@ describe('tasks', () => {
     const { store, msId } = base();
     const a = store.createTask(YOU, msId, { title: 'A' });
     const b = store.createTask(YOU, msId, { title: 'B', after: [a.id] });
-    expectCode(() => store.addDependency(YOU, a.id, { taskId: b.id }), 'conflict', 'A → B → A');
-    expectCode(() => store.addDependency(YOU, a.id, { taskId: a.id }), 'conflict');
-    expectCode(() => store.addDependency(YOU, a.id, { milestoneId: msId }), 'conflict', /cycle/);
+    expectCode(() => store.addDependency(YOU, a.id, { taskId: b.id }), 'invalid', 'A → B → A');
+    expectCode(() => store.addDependency(YOU, a.id, { taskId: a.id }), 'invalid');
+    expectCode(() => store.addDependency(YOU, a.id, { milestoneId: msId }), 'invalid', /cycle/);
   });
 
   it('validates area, dates', () => {

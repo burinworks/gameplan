@@ -33,41 +33,53 @@ Remove it with `scripts/install-launchd.sh --uninstall`. Logs: `~/Library/Logs/g
 | `GAMEPLAN_PORT` | `4747` |
 | `GAMEPLAN_DB` | `~/Library/Application Support/Gameplan/gameplan.db` |
 
+## UI
+
+Build once with `npm run build`, then `npm run dev` serves the app at `http://127.0.0.1:4747/`.
+
+For UI work run `npm run dev` and `npm run dev:ui` together and open `http://localhost:5173` (Vite proxies `/api` and `/events` to the engine).
+
+The engine only answers local hosts (`127.0.0.1`, `localhost`, `[::1]`) and rejects cross-site browser writes; `/mcp` is guarded by the optional token instead.
+
+End-to-end smoke tests (Chromium against a seeded temporary engine, light and dark): `npm run e2e`. Screenshots land in `test-results/screens/`. The first run needs `npx playwright install chromium`.
+
 ## Connect an agent
+
+Gameplan creates an MCP token the first time it starts, and every connection command includes it. In the app, App settings › Agents & MCP shows each command ready to copy (`GET /api/mcp/connect` returns the same snippets). "Rotate token" (`POST /api/mcp/token/rotate`) issues a new one; agents then need the new command. The snippets below show the shape; `<token>` is yours.
 
 Claude Code:
 
 ```bash
-claude mcp add --transport http gameplan http://127.0.0.1:4747/mcp
+claude mcp add --transport http gameplan http://127.0.0.1:4747/mcp --header "Authorization: Bearer <token>"
 ```
 
-Codex:
+Codex — in `~/.codex/config.toml`:
 
-```bash
-codex mcp add gameplan --url http://127.0.0.1:4747/mcp
+```toml
+[mcp_servers.gameplan]
+url = "http://127.0.0.1:4747/mcp"
+http_headers = { Authorization = "Bearer <token>" }
 ```
 
 Gemini CLI:
 
 ```bash
-gemini mcp add --transport http gameplan http://127.0.0.1:4747/mcp
+gemini mcp add --transport http --header "Authorization: Bearer <token>" gameplan http://127.0.0.1:4747/mcp
 ```
 
 Cursor — add to `~/.cursor/mcp.json`:
 
 ```json
-{ "mcpServers": { "gameplan": { "url": "http://127.0.0.1:4747/mcp" } } }
+{ "mcpServers": { "gameplan": { "url": "http://127.0.0.1:4747/mcp", "headers": { "Authorization": "Bearer <token>" } } } }
 ```
 
 Claude Desktop — its config file takes local (stdio) servers, so bridge with `mcp-remote` in `claude_desktop_config.json`:
 
 ```json
-{ "mcpServers": { "gameplan": { "command": "npx", "args": ["-y", "mcp-remote", "http://127.0.0.1:4747/mcp"] } } }
+{ "mcpServers": { "gameplan": { "command": "npx", "args": ["-y", "mcp-remote", "http://127.0.0.1:4747/mcp", "--header", "Authorization: Bearer <token>"] } } }
 ```
 
-With `mcp_token` set, add `"--header", "Authorization: Bearer <token>"` to `args`.
-
-ChatGPT — it connects from the internet, so a local endpoint isn't reachable. Set `mcp_token` first, then expose only `/mcp` over HTTPS, for example a cloudflared tunnel with a path-restricted ingress rule:
+ChatGPT — it connects from the internet, so a local endpoint isn't reachable. Expose only `/mcp` over HTTPS, for example a cloudflared tunnel with a path-restricted ingress rule:
 
 ```yaml
 ingress:
@@ -79,9 +91,11 @@ ingress:
 
 Then add `https://gameplan.example.com/mcp` as a connector, with the token as a bearer token.
 
-Any other client: point it at `http://127.0.0.1:4747/mcp` (Streamable HTTP). The server sends its usage rules on connect; the same rules are in [docs/agent-instructions.md](docs/agent-instructions.md) for agents that load instructions from a file. Connected clients and their last call show in `GET /api/agents`.
+Any other client: point it at `http://127.0.0.1:4747/mcp` (Streamable HTTP) with the `Authorization: Bearer <token>` header. The server sends its usage rules on connect; the same rules are in [docs/agent-instructions.md](docs/agent-instructions.md) for agents that load instructions from a file. Connected clients and their last call show in `GET /api/agents`.
 
-Agent policy is in app settings (`PATCH /api/settings`): `agents_need_review` (on: agent-finished tasks wait for your review), `agents_require_reason` (on), `agents_can_archive` (off), `agents_can_create_projects` (on). `mcp_token` (off by default): when set, `/mcp` requires `Authorization: Bearer <token>`; `GET /api/settings` only reports `mcp_token_set`.
+Port 4747 taken? Set the `port` setting (1024–65535, `PATCH /api/settings`) and restart; `GAMEPLAN_PORT` overrides it. `GET /api/info` reports the `port` actually listening and the `configuredPort`.
+
+Agent policy is in app settings (`PATCH /api/settings`): `agents_need_review` (on: agent-finished tasks wait for your review), `agents_require_reason` (on), `agents_can_archive` (off), `agents_can_create_projects` (on). `/mcp` requires `Authorization: Bearer <token>`; `GET /api/settings` only reports `mcp_token_set`.
 
 ## Develop
 

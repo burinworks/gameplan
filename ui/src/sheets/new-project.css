@@ -1,0 +1,189 @@
+/* New project sheet. The sheet body supplies the padding; focus rings are inset so nothing is clipped.
+   One rhythm: cards, a title line, then label + control rows that share one left and right edge. */
+.np {
+  --np-label: calc(var(--gp-s32) * 3); /* 96 */
+  display: flex;
+  flex-direction: column;
+  gap: var(--gp-s20);
+  padding-top: var(--gp-s4);
+}
+
+/* Start from: four equal cards */
+.np-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--gp-s8);
+}
+.np-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--gp-s6);
+  min-width: 0;
+  padding: var(--gp-s10) var(--gp-s12) var(--gp-s12);
+  border: 0;
+  border-radius: var(--gp-r10);
+  background: transparent;
+  box-shadow: var(--gp-fieldRing);
+  color: var(--gp-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--gp-fast),
+    box-shadow var(--gp-fast);
+}
+.np-card:hover {
+  background: var(--gp-rowSel);
+}
+.np-card[aria-checked='true'] {
+  background: color-mix(in srgb, var(--gp-accent) 7%, transparent);
+  box-shadow: inset 0 0 0 1.5px var(--gp-accent);
+}
+.np-card:focus-visible {
+  outline: none;
+  box-shadow: var(--gp-focus);
+}
+.np-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--gp-s6);
+  min-width: 0;
+  max-width: 100%;
+}
+.np-card__glyph {
+  flex: none;
+  color: var(--gp-text3);
+  transition: color var(--gp-fast);
+}
+.np-card[aria-checked='true'] .np-card__glyph {
+  color: var(--gp-accent);
+}
+.np-card__name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--gp-fs-body);
+  line-height: var(--gp-lh-body);
+  font-weight: var(--gp-fw-semibold);
+}
+/* Two short lines ("3 milestones" / "9 tasks"), never a broken wrap. */
+.np-card__meta {
+  display: flex;
+  flex-direction: column;
+  max-width: 100%;
+  padding-left: calc(var(--gp-icon) + var(--gp-s6));
+  font-size: var(--gp-fs-caption);
+  line-height: var(--gp-lh-caption);
+  color: var(--gp-text2);
+}
+.np-card__meta > span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Name: large title with a bottom hairline that turns accent on focus. */
+.np-name {
+  display: block;
+  width: 100%;
+  height: calc(var(--gp-s20) * 2);
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--gp-field);
+  border-radius: 0;
+  background: transparent;
+  color: var(--gp-text);
+  font: inherit;
+  font-size: var(--gp-fs-title);
+  line-height: var(--gp-lh-title);
+  font-weight: var(--gp-fw-semibold);
+  letter-spacing: var(--gp-tracking-title);
+  transition: border-color var(--gp-fast);
+}
+.np-name::placeholder {
+  color: var(--gp-text3);
+  font-weight: var(--gp-fw-medium);
+}
+.np-name:hover {
+  border-bottom-color: color-mix(in srgb, var(--gp-field) 50%, var(--gp-text3));
+}
+.np-name:focus,
+.np-name:focus-visible {
+  outline: none;
+  box-shadow: none;
+  border-bottom-color: var(--gp-accent);
+}
+
+/* Label column + controls. Every control is one field height; labels sit on the control's centre line. */
+.np-grid {
+  display: grid;
+  grid-template-columns: var(--np-label) minmax(0, 1fr);
+  align-items: center;
+  row-gap: var(--gp-s14);
+}
+.np-label {
+  font-size: var(--gp-fs-body);
+  line-height: var(--gp-lh-body);
+  color: var(--gp-text2);
+}
+.np-label--top {
+  align-self: start;
+  padding-top: calc((var(--gp-fieldH) - var(--gp-lh-body)) / 2);
+}
+.np-control {
+  min-width: 0;
+}
+.np-grid .gp-tokens {
+  min-height: var(--gp-fieldH);
+}
+/* Let the token input shrink so the field stays one row until it needs more. */
+.np-grid .gp-tokens__input {
+  min-width: calc(var(--gp-s32) * 2);
+}
+
+/* Starts: date field, then the milestone preview as a caption line under it. */
+.np-start {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--gp-s8);
+}
+.np-start .gp-date__value,
+.np-start .gp-date__step {
+  height: var(--gp-fieldH);
+}
+.np-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gp-s4) var(--gp-s14);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--gp-fs-meta);
+  line-height: var(--gp-lh-meta);
+  color: var(--gp-text2);
+}
+.np-preview__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gp-s6);
+  white-space: nowrap;
+}
+.np-preview__diamond {
+  flex: none;
+  width: var(--gp-diamondSm);
+  height: var(--gp-diamondSm);
+  border-radius: var(--gp-r2);
+  transform: rotate(45deg);
+}
+.np-preview__date {
+  color: var(--gp-text3);
+}
+
+/* Footer: a disabled primary stays legible (lighter accent, full-strength label). */
+.gp-btn--primary.np-create:disabled {
+  opacity: 1;
+  background: color-mix(in srgb, var(--gp-accent) 58%, var(--gp-panelSolid));
+  color: var(--gp-onAccent);
+}

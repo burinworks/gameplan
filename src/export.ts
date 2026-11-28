@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 
-export const TABLES = ['projects', 'areas', 'milestones', 'tasks', 'todos', 'dependencies', 'attachments', 'events', 'settings', 'agent_clients', 'day_plan_items', 'inbox_items'] as const;
+export const TABLES = ['projects', 'areas', 'milestones', 'tasks', 'todos', 'dependencies', 'attachments', 'task_log', 'events', 'settings', 'agent_clients', 'day_plan_items', 'inbox_items'] as const;
 
 /** Every table, raw rows. */
 export function exportJson(db: DatabaseSync): { schemaVersion: number; tables: Record<string, unknown[]> } {

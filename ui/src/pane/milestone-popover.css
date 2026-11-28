@@ -1,0 +1,57 @@
+/* Create-a-milestone popover: a fixed layer on <body>, like the date calendar. */
+.gp-mp {
+  position: fixed;
+  z-index: var(--gp-z-menu);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gp-s12);
+  padding: var(--gp-s14);
+  border-radius: var(--gp-r12);
+  background: var(--gp-sheet);
+  -webkit-backdrop-filter: var(--gp-blur-menu);
+  backdrop-filter: var(--gp-blur-menu);
+  box-shadow: var(--gp-shadow-sheet);
+  font-size: var(--gp-fs-small);
+}
+.gp-mp__row {
+  display: grid;
+  grid-template-columns: calc(var(--gp-s28) * 2) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--gp-s8);
+}
+.gp-mp__key {
+  color: var(--gp-text2);
+}
+.gp-mp__colours {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gp-s8);
+}
+.gp-mp__colour {
+  width: var(--gp-s20);
+  height: var(--gp-s20);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.gp-mp__colour[aria-checked='true'] {
+  box-shadow:
+    0 0 0 var(--gp-s2) var(--gp-sheet),
+    0 0 0 var(--gp-s4) var(--gp-text);
+}
+.gp-mp__colour:focus-visible {
+  outline: none;
+  box-shadow: var(--gp-focus);
+}
+.gp-mp__error {
+  margin: 0;
+  color: var(--gp-risk);
+  font-size: var(--gp-fs-small);
+}
+.gp-mp__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--gp-s8);
+}
