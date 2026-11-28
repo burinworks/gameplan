@@ -23,3 +23,26 @@ export const useDraftBar = (): DraftBar | null =>
     },
     () => current,
   );
+
+export interface DraftMilestone {
+  name: string;
+  due: string;
+}
+
+let milestone: DraftMilestone | null = null;
+const msSubs = new Set<() => void>();
+
+/** NewMilestone sets the milestone being drawn (name + due); TimelineTab may render it as a selected group row. null clears. */
+export function setDraftMilestone(v: DraftMilestone | null): void {
+  milestone = v;
+  msSubs.forEach((f) => f());
+}
+
+export const useDraftMilestone = (): DraftMilestone | null =>
+  useSyncExternalStore(
+    (f) => {
+      msSubs.add(f);
+      return () => void msSubs.delete(f);
+    },
+    () => milestone,
+  );

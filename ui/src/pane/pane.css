@@ -5,7 +5,6 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: var(--gp-s14);
   padding: var(--gp-s18) var(--gp-s20);
   background: var(--gp-aside);
   border-left: 1px solid var(--gp-grid);
