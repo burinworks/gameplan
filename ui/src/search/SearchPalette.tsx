@@ -74,7 +74,8 @@ export function SearchPalette({ onClose }: { onClose(): void }) {
   return createPortal(
     <div className="gp-scrim gp-search__scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="gp-search" role="dialog" aria-modal="true" aria-label="Search" onKeyDown={onKeyDown}>
-        <Field label="Search" value={q} onChange={setQ} placeholder="Search…" autoFocus />
+        <Field label="Search" value={q} onChange={setQ} placeholder="Search…" icon="search" variant="quiet" autoFocus />
+        {q.trim() === '' && <p className="gp-search__hint">Search projects, milestones, tasks, to-dos and links.</p>}
         {settled && (
           <div className="gp-search__list" ref={listRef} role="listbox" aria-label="Results">
             {groups.length === 0 && (

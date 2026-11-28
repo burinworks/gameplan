@@ -6,7 +6,7 @@ import { undoStack } from '../../api/live';
 import { paths } from '../../app/routes';
 import { useShortcut } from '../../app/shortcuts';
 import { fmtActorAt } from '../../lib/format';
-import { Button, Field, Swatch, Undo } from '../../ui';
+import { Button, EmptyState, Field, Page, Swatch, Undo } from '../../ui';
 import './inbox.css';
 
 type OpenMenu = { id: string; kind: 'task' | 'todo' } | null;
@@ -112,6 +112,7 @@ export function Inbox() {
   const capture = useCapture();
   const triage = useTriage();
   const revert = useRevert();
+  const captureRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState('');
   const [open, setOpen] = useState<OpenMenu>(null);
   const [selId, setSelId] = useState<string | null>(null);
@@ -190,45 +191,60 @@ export function Inbox() {
   }, [selId, selIndex]);
 
   return (
-    <section className="gp-inbox" aria-label="Inbox">
-      <h1 className="gp-inbox__title">Inbox</h1>
-      <Field value={text} onChange={setText} onEnter={submit} label="Capture" placeholder="Capture…" />
+    <Page title="Inbox" count={items.length} roomy label="Inbox" className="gp-inbox" bodyClassName="gp-inbox__page">
+      <div className="gp-inbox__capture">
+        <Field
+          value={text}
+          onChange={setText}
+          onEnter={submit}
+          label="Capture"
+          icon="inbox"
+          submitHint="Add"
+          placeholder="Capture a thought, task or link…"
+          inputRef={captureRef}
+        />
+      </div>
       {undo && (
         <div className="gp-inbox__undo">
           <Undo key={undo.id} message={undo.message} onUndo={onUndo} onExpire={() => setUndo(null)} />
         </div>
       )}
       {items.length === 0 && !inbox.isPending ? (
-        <p className="gp-inbox__empty">Inbox is empty</p>
+        <EmptyState
+          icon="inbox"
+          title="Inbox is empty"
+          hint="Things you capture on Home, or that agents capture, land here until you triage them."
+          action={{ label: 'Capture something', onClick: () => captureRef.current?.focus() }}
+        />
       ) : (
         <ul className="gp-inbox__list">
           {items.map((it) => (
             <li key={it.id} className={`gp-inbox__row${it.id === selId ? ' is-selected' : ''}${open?.id === it.id ? ' is-open' : ''}`} aria-current={it.id === selId || undefined}>
               <div className="gp-inbox__text">
-                <span className="gp-inbox__body" dir="auto">
+                <span className="gp-inbox__body" dir="auto" title={it.text}>
                   {it.text}
                 </span>
                 <span className="gp-inbox__meta">{fmtActorAt(it.by, it.at, now)}</span>
               </div>
               <div className="gp-inbox__actions">
                 <div className="gp-inbox__anchor">
-                  <Button variant="quiet" label="Make task" onClick={() => setOpen(open?.id === it.id && open.kind === 'task' ? null : { id: it.id, kind: 'task' })} />
+                  <Button variant="secondary" className="gp-inbox__btn" label="Make task" onClick={() => setOpen(open?.id === it.id && open.kind === 'task' ? null : { id: it.id, kind: 'task' })} />
                   {open?.id === it.id && open.kind === 'task' && (
                     <MilestoneMenu onPick={(slug, mid) => makeTask(it.id, slug, mid, it.text)} onClose={() => setOpen(null)} />
                   )}
                 </div>
                 <div className="gp-inbox__anchor">
-                  <Button variant="quiet" label="Add as to-do" onClick={() => setOpen(open?.id === it.id && open.kind === 'todo' ? null : { id: it.id, kind: 'todo' })} />
+                  <Button variant="quiet" className="gp-inbox__btn" label="Add as to-do" onClick={() => setOpen(open?.id === it.id && open.kind === 'todo' ? null : { id: it.id, kind: 'todo' })} />
                   {open?.id === it.id && open.kind === 'todo' && (
                     <TaskMenu onPick={(taskId) => doTriage(it.id, { as: 'todo', taskId }, 'Added as to-do')} onClose={() => setOpen(null)} />
                   )}
                 </div>
-                <Button variant="quiet" label="Dismiss" onClick={() => doTriage(it.id, { as: 'dismiss' }, 'Dismissed')} />
+                <Button variant="icon" className="gp-inbox__dismiss" icon="close" label="Dismiss" onClick={() => doTriage(it.id, { as: 'dismiss' }, 'Dismissed')} />
               </div>
             </li>
           ))}
         </ul>
       )}
-    </section>
+    </Page>
   );
 }

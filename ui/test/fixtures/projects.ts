@@ -1,7 +1,18 @@
 export const templates = [
-  { id: 'report', name: 'Report', milestones: 3, tasks: 9 },
-  { id: 'launch', name: 'Launch', milestones: 4, tasks: 14 },
-  { id: 'research', name: 'Research', milestones: 3, tasks: 8 },
+  {
+    id: 'report',
+    name: 'Report',
+    milestones: 3,
+    tasks: 9,
+    areas: ['Research', 'Data', 'Writing', 'Design'],
+    milestoneOffsets: [
+      { name: 'Outline', offsetDays: 4 },
+      { name: 'Draft', offsetDays: 11 },
+      { name: 'Final', offsetDays: 32 },
+    ],
+  },
+  { id: 'launch', name: 'Launch', milestones: 4, tasks: 14, areas: ['Product', 'Marketing'], milestoneOffsets: [{ name: 'Plan', offsetDays: 5 }] },
+  { id: 'research', name: 'Research', milestones: 3, tasks: 8, areas: ['Reading'], milestoneOffsets: [{ name: 'Questions', offsetDays: 3 }] },
 ];
 
 const base = { milestones: [], nextMilestone: null, progress: { pct: 0, done: 0, total: 0 }, atRisk: 0, status: 'active' };

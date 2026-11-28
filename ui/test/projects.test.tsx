@@ -41,8 +41,7 @@ describe('NewProject', () => {
     const onClose = vi.fn();
     const { history } = mount(<NewProject onClose={onClose} />);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('radio', { name: 'Launch' }));
-    expect(screen.queryByRole('button', { name: 'Add' })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole('radio', { name: /Launch/ }));
     await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Spring');
     await user.click(screen.getByRole('button', { name: 'Create project' }));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
@@ -52,12 +51,12 @@ describe('NewProject', () => {
     expect(history?.at(-1)).toBe('/p/fresh/timeline');
   });
 
-  it('blank posts areas from toggled chips and the first milestone', async () => {
+  it('blank posts typed area tokens and the first milestone', async () => {
     const fn = mockFetch(routes());
     mount(<NewProject onClose={() => {}} />);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: 'AI' }));
-    await user.click(screen.getByRole('button', { name: 'QA' }));
+    await screen.findByRole('radio', { name: /Launch/ });
+    await user.type(screen.getByRole('textbox', { name: 'Areas' }), 'AI{Enter}QA,');
     await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Fresh');
     await user.type(screen.getByRole('textbox', { name: 'First milestone' }), 'Kickoff');
     await user.click(screen.getByRole('button', { name: 'Create project' }));
@@ -78,6 +77,50 @@ describe('NewProject', () => {
     await user.click(screen.getByRole('button', { name: 'Create project' }));
     await waitFor(() => expect(bodyOf(fn, 'POST', '/api/projects')).toBeDefined());
     expect(bodyOf(fn, 'POST', '/api/projects').color).toBe(PALETTE[2]!.hex);
+  });
+});
+
+describe('NewProject template cards and areas', () => {
+  const routes = () => ({
+    '/api/templates': templates,
+    '/api/projects': projectList,
+    '/api/settings': {},
+    'POST /api/projects': { slug: 'fresh', id: 'x' },
+  });
+
+  it('shows each template as a card with its milestone and task counts', async () => {
+    mockFetch(routes());
+    mount(<NewProject onClose={() => {}} />);
+    const group = await screen.findByRole('radiogroup', { name: 'Start from' });
+    expect(await within(group).findByRole('radio', { name: /Launch/ })).toHaveTextContent('4 milestones · 14 tasks');
+    expect(within(group).getByRole('radio', { name: /Blank/ })).toHaveTextContent('Empty project');
+    expect(within(group).getByRole('radio', { name: /Blank/ })).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('a template prefills its areas, shows the milestone preview and keeps added areas', async () => {
+    const fn = mockFetch(routes());
+    mount(<NewProject onClose={() => {}} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('radio', { name: /Report/ }));
+    expect(screen.getByRole('button', { name: 'Remove Research' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove Design' })).toBeInTheDocument();
+    expect(screen.getByText(/^Outline [A-Z][a-z]{2} \d+ · Draft .* · Final /)).toBeInTheDocument();
+    await user.type(screen.getByRole('textbox', { name: 'Areas' }), 'Review{Enter}');
+    await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Q1');
+    await user.click(screen.getByRole('button', { name: 'Create project' }));
+    await waitFor(() => expect(bodyOf(fn, 'POST', '/api/projects')).toBeDefined());
+    const b = bodyOf(fn, 'POST', '/api/projects');
+    expect(b.template).toBe('report');
+    expect(b.areas).toEqual([{ name: 'Review' }]);
+  });
+
+  it('switching back to Blank drops the template areas', async () => {
+    mockFetch(routes());
+    mount(<NewProject onClose={() => {}} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('radio', { name: /Report/ }));
+    await user.click(screen.getByRole('radio', { name: /Blank/ }));
+    expect(screen.queryByRole('button', { name: 'Remove Research' })).toBeNull();
   });
 });
 
@@ -137,6 +180,23 @@ describe('ProjectSettings', () => {
 });
 
 describe('PausedArchived', () => {
+  it('has a page title and per-section empty states', async () => {
+    mockFetch({ '/api/overview': { paused: [], archived: [], count: 0 } });
+    mount(<PausedArchived />);
+    expect(await screen.findByRole('heading', { name: 'Paused & archived' })).toBeInTheDocument();
+    expect(await screen.findByText('Nothing paused')).toBeInTheDocument();
+    expect(screen.getByText('Nothing archived')).toBeInTheDocument();
+  });
+
+  it('writes counts and the archive date in full', async () => {
+    const one = { ...overview.archived[0]!, tasks: 1, milestones: 1 };
+    mockFetch({ '/api/overview': { ...overview, archived: [one] } });
+    mount(<PausedArchived />);
+    expect(await screen.findByText('1 task · 1 milestone')).toBeInTheDocument();
+    expect(screen.getByText(/^Archived Nov 10/)).toBeInTheDocument();
+    expect(screen.getByText(/^Paused Nov 20/)).toBeInTheDocument();
+  });
+
   it('Resume PATCHes status active', async () => {
     const fn = mockFetch({ '/api/overview': overview, 'PATCH /api/projects/side': {} });
     mount(<PausedArchived />);

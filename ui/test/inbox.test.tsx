@@ -59,9 +59,20 @@ describe('Inbox', () => {
     expect(screen.getByText('اشتري الحليب')).toHaveAttribute('dir', 'auto');
   });
 
-  it('shows the empty state', async () => {
+  it('shows the empty state with a CTA that focuses the capture field', async () => {
     setup({}, []);
     expect(await screen.findByText('Inbox is empty')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Capture something' }));
+    expect(screen.getByRole('textbox', { name: 'Capture' })).toHaveFocus();
+  });
+
+  it('shows the count in the header and the Add hint only while typing', async () => {
+    setup();
+    await screen.findAllByRole('listitem');
+    expect(screen.getByRole('heading', { name: /Inbox/ })).toHaveTextContent('4');
+    expect(screen.queryByRole('button', { name: 'Add' })).toBeNull();
+    await userEvent.type(screen.getByRole('textbox', { name: 'Capture' }), 'x');
+    expect(screen.getByRole('button', { name: 'Add' })).toBeInTheDocument();
   });
 
   it('dismisses with an undo line', async () => {

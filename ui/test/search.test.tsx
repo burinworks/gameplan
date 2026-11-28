@@ -45,6 +45,13 @@ describe('SearchPalette', () => {
     expect(await screen.findByText('No matches for "zzzz"')).toBeInTheDocument();
   });
 
+  it('hints what can be searched until you type', async () => {
+    setup();
+    expect(screen.getByText(/Search projects, milestones, tasks/)).toBeInTheDocument();
+    await userEvent.type(screen.getByRole('textbox', { name: 'Search' }), 'n');
+    expect(screen.queryByText(/Search projects, milestones, tasks/)).toBeNull();
+  });
+
   it('shows nothing for an empty query and closes on Escape', async () => {
     const { onClose } = setup();
     expect(screen.queryByText(/No matches/)).toBeNull();
