@@ -1,9 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { Router, useSearch } from 'wouter';
 import { memoryLocation } from 'wouter/memory-location';
 import { describe, expect, it } from 'vitest';
+import { today } from '../src/app/today';
+import { addDays } from '../src/pane/dates';
+import { htmlToMd, mdToHtml } from '../src/pane/markdown';
 import { NewMilestone } from '../src/pane/NewMilestone';
 import { NewTask } from '../src/pane/NewTask';
 import { TaskPane } from '../src/pane/TaskPane';
@@ -47,15 +50,15 @@ const taskRoutes = (over: Parameters<typeof taskDetail>[0] = {}) => ({
 });
 
 describe('TaskPane', () => {
-  it('review task: Approve posts accept', async () => {
+  it('review task: Accept posts accept', async () => {
     const { fetchMock } = mount(<TaskPane taskId="t1" slug="acme" />, taskRoutes({ status: 'review' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Approve' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Accept' }));
     await waitFor(() => expect(bodies(fetchMock, 'POST', '/api/tasks/t1/review')).toEqual([{ decision: 'accept' }]));
   });
 
   it('review task: Send back with a note', async () => {
     const { fetchMock } = mount(<TaskPane taskId="t1" slug="acme" />, taskRoutes({ status: 'review' }));
-    expect(await screen.findByText('Needs review')).toBeInTheDocument();
+    expect(await screen.findByText(/finished this/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Send back' }));
     const note = screen.getByPlaceholderText('What needs fixing…');
     fireEvent.change(note, { target: { value: 'tests fail' } });
@@ -74,7 +77,7 @@ describe('TaskPane', () => {
   it('non-review task has no review bar', async () => {
     mount(<TaskPane taskId="t1" slug="acme" />, taskRoutes());
     await screen.findByLabelText('Title');
-    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull();
   });
 
   it('resume: empty state edits, rejects newline, stops at 200 chars, counter at 180', async () => {
@@ -98,23 +101,75 @@ describe('TaskPane', () => {
     fireEvent.click(await screen.findByRole('checkbox', { name: 'First' }));
     await waitFor(() => expect(bodies(fetchMock, 'PATCH', '/api/todos/d1')).toEqual([{ done: true }]));
     expect(screen.getByRole('checkbox', { name: 'Second' })).toHaveAttribute('tabindex', '-1');
-    expect(screen.getByText('0/2 to-dos')).toBeInTheDocument();
+    expect(screen.getByText('0 / 2')).toBeInTheDocument();
   });
 
-  it('+ on Start shifts both dates by one day, no cascade', async () => {
+  const group = (name: string) => within(screen.getByRole('group', { name }));
+
+  it('Next day on Start moves the whole task (length kept), no cascade', async () => {
     const { fetchMock } = mount(<TaskPane taskId="t1" slug="acme" />, taskRoutes());
-    fireEvent.click(await screen.findByRole('button', { name: 'Start +1 day' }));
+    await screen.findByLabelText('Title');
+    fireEvent.click(group('Start').getByRole('button', { name: 'Next day' }));
     await waitFor(() =>
       expect(bodies(fetchMock, 'POST', '/api/tasks/t1/reschedule')).toEqual([{ start: '2026-11-21', end: '2026-11-26', cascade: false }]),
     );
   });
 
-  it('plain click on End + shifts both dates', async () => {
+  it('Next day on End changes only the end', async () => {
     const { fetchMock } = mount(<TaskPane taskId="t1" slug="acme" />, taskRoutes());
-    fireEvent.click(await screen.findByRole('button', { name: 'End +1 day' }));
+    await screen.findByLabelText('Title');
+    fireEvent.click(group('End').getByRole('button', { name: 'Next day' }));
     await waitFor(() =>
-      expect(bodies(fetchMock, 'POST', '/api/tasks/t1/reschedule')).toEqual([{ start: '2026-11-21', end: '2026-11-26', cascade: false }]),
+      expect(bodies(fetchMock, 'POST', '/api/tasks/t1/reschedule')).toEqual([{ start: '2026-11-20', end: '2026-11-26', cascade: false }]),
     );
+  });
+
+  it('picking a start day in the calendar keeps the length', async () => {
+    const { fetchMock } = mount(<TaskPane taskId="t1" slug="acme" />, taskRoutes());
+    await screen.findByLabelText('Title');
+    fireEvent.click(group('Start').getByRole('button', { name: /Nov 20/ }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Start calendar' })).getByRole('button', { name: /Nov 27/ }));
+    await waitFor(() =>
+      expect(bodies(fetchMock, 'POST', '/api/tasks/t1/reschedule')).toEqual([{ start: '2026-11-27', end: '2026-12-02', cascade: false }]),
+    );
+  });
+
+  it('End cannot go before Start: Previous day is disabled at the start date', async () => {
+    mount(<TaskPane taskId="t1" slug="acme" />, taskRoutes({ start: '2026-11-25', end: '2026-11-25' }));
+    await screen.findByLabelText('Title');
+    expect(group('End').getByRole('button', { name: 'Previous day' })).toBeDisabled();
+  });
+
+  it('the priority chip opens a menu and patches', async () => {
+    const { fetchMock } = mount(<TaskPane taskId="t1" slug="acme" />, taskRoutes());
+    fireEvent.click(await screen.findByRole('button', { name: 'Priority: P2' }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'P1' }));
+    await waitFor(() => expect(bodies(fetchMock, 'PATCH', '/api/tasks/t1')).toEqual([{ priority: 'p1' }]));
+  });
+
+  it('Context comes before To-do and saves Markdown on blur', async () => {
+    const { fetchMock } = mount(<TaskPane taskId="t1" slug="acme" />, taskRoutes({ description: 'Hello **world**' }));
+    const ctx = await screen.findByRole('textbox', { name: 'Description' });
+    expect(ctx.innerHTML).toContain('<strong>world</strong>');
+    const sections = screen.getAllByRole('region').map((r) => r.getAttribute('aria-label'));
+    expect(sections.indexOf('Context')).toBeGreaterThan(-1);
+    expect(sections.indexOf('Context')).toBeLessThan(sections.indexOf('To-do'));
+    fireEvent.focus(ctx);
+    ctx.textContent = 'Plain note';
+    fireEvent.input(ctx);
+    fireEvent.blur(ctx);
+    await waitFor(() => expect(bodies(fetchMock, 'PATCH', '/api/tasks/t1')).toEqual([{ description: 'Plain note' }]));
+  });
+
+  it('adds a to-do from the one-line row: Enter adds and keeps focus', async () => {
+    const { fetchMock } = mount(<TaskPane taskId="t1" slug="acme" />, { ...taskRoutes(), 'POST /api/tasks/t1/todos': [] });
+    const add = await screen.findByRole('textbox', { name: 'Add a to-do' });
+    add.focus();
+    fireEvent.change(add, { target: { value: 'Write docs' } });
+    fireEvent.keyDown(add, { key: 'Enter' });
+    await waitFor(() => expect(bodies(fetchMock, 'POST', '/api/tasks/t1/todos')).toEqual([{ todos: [{ title: 'Write docs' }] }]));
+    expect((add as HTMLInputElement).value).toBe('');
+    expect(add).toHaveFocus();
   });
 
   it('a refused title save restores the server value', async () => {
@@ -128,26 +183,6 @@ describe('TaskPane', () => {
     fireEvent.keyDown(title, { key: 'Enter' });
     fireEvent.blur(title);
     await waitFor(() => expect(title.value).toBe('Draft the spec'));
-  });
-
-  it('shift-click shifts only End', async () => {
-    const { fetchMock } = mount(<TaskPane taskId="t1" slug="acme" />, taskRoutes());
-    fireEvent.click(await screen.findByRole('button', { name: 'End +1 day' }), { shiftKey: true });
-    await waitFor(() =>
-      expect(bodies(fetchMock, 'POST', '/api/tasks/t1/reschedule')).toEqual([{ start: '2026-11-20', end: '2026-11-26', cascade: false }]),
-    );
-  });
-
-  it('invalid date shows the risk ring and sends nothing', async () => {
-    const { fetchMock } = mount(<TaskPane taskId="t1" slug="acme" />, taskRoutes());
-    const start = await screen.findByLabelText('Start date');
-    fireEvent.focus(start);
-    fireEvent.change(start, { target: { value: '2026-13-40' } });
-    expect(start).toHaveClass('is-invalid');
-    fireEvent.keyDown(start, { key: 'Enter' });
-    fireEvent.blur(start);
-    expect(start).toHaveClass('is-invalid');
-    expect(bodies(fetchMock, 'POST', '/api/tasks/t1/reschedule')).toEqual([]);
   });
 
   it('an agent update while the title is focused does not change it', async () => {
@@ -185,36 +220,99 @@ describe('TaskPane', () => {
 
   it('adds a dependency from the same-project picker', async () => {
     const { fetchMock } = mount(<TaskPane taskId="t1" slug="acme" />, { ...taskRoutes(), 'POST /api/dependencies': {} });
-    const pick = await screen.findByLabelText('Add dependency');
-    await waitFor(() => expect(screen.getByRole('option', { name: 'Write tests' })).toBeInTheDocument());
-    fireEvent.change(pick, { target: { value: 't2' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Add dependency' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Add dependency' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Write tests' }));
     await waitFor(() => expect(bodies(fetchMock, 'POST', '/api/dependencies')).toEqual([{ fromTaskId: 't1', taskId: 't2' }]));
   });
 });
 
+const tomorrow = () => addDays(today(), 1);
+const grp = (name: string) => within(screen.getByRole('group', { name }));
+
 describe('NewTask', () => {
   const routes = { '/api/projects/acme': projectTree(), 'POST /api/milestones/m1/tasks': treeTask({ id: 'tNew' }), 'POST /api/inbox/i1/triage': { item: {}, created: { entity: 'task', id: 'tInbox' } } };
 
-  it('creates with only a title and opens the new task', async () => {
+  it('dates default to tomorrow, one day long, never empty', () => {
+    mount(<NewTask slug="acme" milestoneId="m1" />, routes);
+    expect(grp('Start').getByRole('button', { name: /,/ })).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('YYYY-MM-DD')).toBeNull();
+  });
+
+  it('creates with a title and the default dates, then opens the new task', async () => {
     const { fetchMock } = mount(<NewTask slug="acme" milestoneId="m1" />, routes);
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Ship it' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create task' }));
-    await waitFor(() => expect(bodies(fetchMock, 'POST', '/api/milestones/m1/tasks')).toEqual([{ title: 'Ship it' }]));
+    await waitFor(() => expect(bodies(fetchMock, 'POST', '/api/milestones/m1/tasks')).toEqual([{ title: 'Ship it', start: tomorrow(), end: tomorrow() }]));
     await waitFor(() => expect(screen.getByTestId('search').textContent).toContain('task=tNew'));
   });
 
-  it('sends dates, to-do lines and links; mod+enter creates', async () => {
+  it('moving Start keeps the length; End only changes the end', async () => {
     const { fetchMock } = mount(<NewTask slug="acme" milestoneId="m1" />, routes);
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Ship it' } });
-    fireEvent.change(screen.getByLabelText('Start date'), { target: { value: '2026-11-30' } });
-    fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2026-12-02' } });
-    fireEvent.change(screen.getByLabelText('To-dos'), { target: { value: 'one\n\ntwo' } });
+    fireEvent.click(grp('End').getByRole('button', { name: 'Next day' })); // two days long
+    fireEvent.click(grp('Start').getByRole('button', { name: 'Next day' })); // both move
+    fireEvent.keyDown(screen.getByLabelText('Title'), { key: 'Enter', ctrlKey: true });
+    await waitFor(() => expect(bodies(fetchMock, 'POST', '/api/milestones/m1/tasks')).toEqual([{ title: 'Ship it', start: addDays(tomorrow(), 1), end: addDays(tomorrow(), 2) }]));
+  });
+
+  it('sends context, one-line to-dos and links; mod+enter creates', async () => {
+    const { fetchMock } = mount(<NewTask slug="acme" milestoneId="m1" />, routes);
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Ship it' } });
+    const ctx = screen.getByRole('textbox', { name: 'Context' });
+    ctx.textContent = 'Short, user-facing.';
+    fireEvent.input(ctx);
+    const add = screen.getByRole('textbox', { name: 'Add a to-do' });
+    fireEvent.change(add, { target: { value: 'one' } });
+    fireEvent.keyDown(add, { key: 'Enter' });
+    fireEvent.change(add, { target: { value: 'two' } });
+    fireEvent.keyDown(add, { key: 'Enter' });
+    expect(screen.getByRole('textbox', { name: 'To-do 1' })).toHaveValue('one');
+    expect(add).toHaveValue('');
+    fireEvent.click(screen.getByRole('button', { name: 'Link' }));
+    const url = screen.getByRole('textbox', { name: 'Link address' });
+    fireEvent.change(url, { target: { value: 'https://example.com/spec' } });
+    fireEvent.keyDown(url, { key: 'Enter' });
     fireEvent.keyDown(screen.getByLabelText('Title'), { key: 'Enter', ctrlKey: true });
     await waitFor(() =>
       expect(bodies(fetchMock, 'POST', '/api/milestones/m1/tasks')).toEqual([
-        { title: 'Ship it', start: '2026-11-30', end: '2026-12-02', todos: [{ title: 'one' }, { title: 'two' }] },
+        {
+          title: 'Ship it',
+          start: tomorrow(),
+          end: tomorrow(),
+          description: 'Short, user-facing.',
+          todos: [{ title: 'one' }, { title: 'two' }],
+          links: [{ url: 'https://example.com/spec' }],
+        },
       ]),
     );
+  });
+
+  it('Backspace on an empty to-do row removes it', () => {
+    mount(<NewTask slug="acme" milestoneId="m1" />, routes);
+    const add = screen.getByRole('textbox', { name: 'Add a to-do' });
+    fireEvent.change(add, { target: { value: 'one' } });
+    fireEvent.keyDown(add, { key: 'Enter' });
+    const row = screen.getByRole('textbox', { name: 'To-do 1' });
+    fireEvent.change(row, { target: { value: '' } });
+    fireEvent.keyDown(row, { key: 'Backspace' });
+    expect(screen.queryByRole('textbox', { name: 'To-do 1' })).toBeNull();
+  });
+
+  it('Context is above To-do', () => {
+    mount(<NewTask slug="acme" milestoneId="m1" />, routes);
+    const order = screen.getAllByRole('region').map((r) => r.getAttribute('aria-label'));
+    expect(order.indexOf('Context')).toBeLessThan(order.indexOf('To-do'));
+  });
+
+  it('End cannot be set before Start', () => {
+    mount(<NewTask slug="acme" milestoneId="m1" />, routes);
+    expect(grp('End').getByRole('button', { name: 'Previous day' })).toBeDisabled();
+  });
+
+  it('has a Cancel button', () => {
+    mount(<NewTask slug="acme" milestoneId="m1" />, routes);
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
   });
 
   it('a double Enter creates one task', async () => {
@@ -228,24 +326,17 @@ describe('NewTask', () => {
     expect(bodies(fetchMock, 'POST', '/api/milestones/m1/tasks')).toHaveLength(1);
   });
 
-  it('shows no request for an invalid date', () => {
-    const { fetchMock } = mount(<NewTask slug="acme" milestoneId="m1" />, routes);
-    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'x' } });
-    fireEvent.change(screen.getByLabelText('Start date'), { target: { value: 'nope' } });
-    expect(screen.getByLabelText('Start date')).toHaveClass('is-invalid');
-    expect(screen.getByRole('button', { name: 'Create task' })).toBeDisabled();
-    expect(bodies(fetchMock, 'POST', '/api/milestones/m1/tasks')).toEqual([]);
-  });
-
   it('inbox prefill triages as a task', async () => {
     const { fetchMock } = mount(<NewTask slug="acme" milestoneId="m1" title="From inbox" inboxId="i1" />, routes);
     expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('From inbox');
     fireEvent.click(screen.getByRole('button', { name: 'Create task' }));
-    await waitFor(() => expect(bodies(fetchMock, 'POST', '/api/inbox/i1/triage')).toEqual([{ as: 'task', milestoneId: 'm1', task: { title: 'From inbox' } }]));
+    await waitFor(() =>
+      expect(bodies(fetchMock, 'POST', '/api/inbox/i1/triage')).toEqual([{ as: 'task', milestoneId: 'm1', task: { title: 'From inbox', start: tomorrow(), end: tomorrow() } }]),
+    );
     await waitFor(() => expect(screen.getByTestId('search').textContent).toContain('task=tInbox'));
   });
 
-  it('sets the draft bar while the dates are valid and clears on unmount', async () => {
+  it('shows the draft bar from the start', async () => {
     const { useDraftBar } = await import('../src/pane/draftBar');
     let seen: unknown;
     function Watch() {
@@ -259,29 +350,31 @@ describe('NewTask', () => {
       </>,
       routes,
     );
-    expect(seen).toBeNull();
-    fireEvent.change(screen.getByLabelText('Start date'), { target: { value: '2026-11-30' } });
-    fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2026-12-02' } });
-    expect(seen).toEqual({ start: '2026-11-30', end: '2026-12-02', milestoneId: 'm1' });
-    fireEvent.change(screen.getByLabelText('End date'), { target: { value: 'bad' } });
-    expect(seen).toBeNull();
+    expect(seen).toEqual({ start: tomorrow(), end: tomorrow(), milestoneId: 'm1' });
+    fireEvent.click(grp('End').getByRole('button', { name: 'Next day' }));
+    expect(seen).toEqual({ start: tomorrow(), end: addDays(tomorrow(), 1), milestoneId: 'm1' });
   });
 });
 
 describe('NewMilestone', () => {
-  it('creates with a name and due date', async () => {
+  it('creates with a name and a never-empty due date (default two weeks out)', async () => {
     const { fetchMock: f } = mount(<NewMilestone slug="acme" />, { 'POST /api/projects/acme/milestones': { id: 'mNew' } });
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Beta' } });
-    fireEvent.change(screen.getByLabelText('Due date'), { target: { value: '2026-12-01' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Due +1 day' }));
-    expect((screen.getByLabelText('Due date') as HTMLInputElement).value).toBe('2026-12-02');
+    fireEvent.click(grp('Due').getByRole('button', { name: 'Next day' }));
     fireEvent.click(screen.getByRole('radio', { name: 'Active' }));
     fireEvent.click(screen.getByRole('button', { name: 'Create milestone' }));
-    await waitFor(() => expect(bodies(f, 'POST', '/api/projects/acme/milestones')).toEqual([{ name: 'Beta', due: '2026-12-02', status: 'active' }]));
+    await waitFor(() => expect(bodies(f, 'POST', '/api/projects/acme/milestones')).toEqual([{ name: 'Beta', due: addDays(today(), 15), status: 'active' }]));
   });
-});
 
-describe('NewMilestone', () => {
+  it('defaults the due date to two weeks after the last milestone', async () => {
+    const { fetchMock: f } = mount(<NewMilestone slug="acme" />, { '/api/projects/acme': projectTree(), 'POST /api/projects/acme/milestones': { id: 'mNew' } });
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Docs' } });
+    const expected = addDays('2026-12-01', 14) < tomorrow() ? tomorrow() : addDays('2026-12-01', 14);
+    await waitFor(() => expect(screen.getByRole('button', { pressed: true, name: /\d/ })).toHaveAttribute('data-date', expected));
+    fireEvent.click(screen.getByRole('button', { name: 'Create milestone' }));
+    await waitFor(() => expect(bodies(f, 'POST', '/api/projects/acme/milestones')).toEqual([{ name: 'Docs', due: expected }]));
+  });
+
   it('a double Enter creates one milestone', async () => {
     const { fetchMock } = mount(<NewMilestone slug="acme" />, {
       'POST /api/projects/acme/milestones': async () => (await new Promise((r) => setTimeout(r, 30)), { id: 'mNew' }),
@@ -292,5 +385,30 @@ describe('NewMilestone', () => {
     fireEvent.keyDown(name, { key: 'Enter', ctrlKey: true });
     await new Promise((r) => setTimeout(r, 80));
     expect(bodies(fetchMock, 'POST', '/api/projects/acme/milestones')).toHaveLength(1);
+  });
+});
+
+describe('markdown', () => {
+  it('round-trips bold, italic, links and lists', () => {
+    const md = 'Intro **bold** and *it* with [a link](https://x.io)\n- one\n- two\nend';
+    const el = document.createElement('div');
+    el.innerHTML = mdToHtml(md);
+    expect(el.querySelectorAll('li')).toHaveLength(2);
+    expect(el.querySelector('strong')?.textContent).toBe('bold');
+    expect(el.querySelector('a')?.getAttribute('href')).toBe('https://x.io');
+    expect(htmlToMd(el)).toBe(md);
+  });
+
+  it('escapes HTML and refuses script links', () => {
+    const el = document.createElement('div');
+    el.innerHTML = mdToHtml('<b>x</b> [bad](javascript:alert(1))');
+    expect(el.querySelector('b')).toBeNull();
+    expect(el.querySelector('a')).toBeNull();
+  });
+
+  it('reads Chrome-style div lines', () => {
+    const el = document.createElement('div');
+    el.innerHTML = 'one<div>two</div><div><br></div><div>three</div>';
+    expect(htmlToMd(el)).toBe('one\ntwo\n\nthree');
   });
 });
